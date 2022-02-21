@@ -31,7 +31,7 @@ class AlexNet(nn.Module):
         self.std = torch.tensor([[[0.229]], [[0.224]], [[0.225]]]).cuda()
 
     def forward(self, x, alpha=1):
-        # x = (x-self.mean)/self.std
+        x = (x - self.mean) / self.std
         f = self.features(x)
         f = f.view(f.size(0), -1)
         y = self.classifier(f)
@@ -72,7 +72,7 @@ class VGG(nn.Module):
         self.std = torch.tensor([[[0.229]], [[0.224]], [[0.225]]]).cuda()
 
     def forward(self, x, alpha=1):
-        # x = (x-self.mean)/self.std
+        x = (x - self.mean) / self.std
         f = self.features(x)
         f = f.view(f.size(0), -1)
         y = self.classifier(f)
@@ -109,7 +109,7 @@ class ResNet(nn.Module):
         self.std = torch.tensor([[[0.229]], [[0.224]], [[0.225]]]).cuda()
 
     def forward(self, x, alpha=1):
-        # x = (x-self.mean)/self.std
+        x = (x - self.mean) / self.std
         x = self.feature_layers(x)
         x = x.view(x.size(0), -1)
         y = self.hash_layer(x)

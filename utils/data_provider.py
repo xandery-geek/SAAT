@@ -6,6 +6,7 @@ import torch
 from torch.autograd import Variable
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
+from torch.utils.data import DataLoader
 
 
 class HashingDataset(Dataset):
@@ -67,3 +68,34 @@ def generate_hash_code(model, data_loader, num_data, bit):
 def get_classes_num(dataset):
     classes_dic = {'FLICKR-25K': 38, 'NUS-WIDE': 21, 'MS-COCO': 80}
     return classes_dic[dataset]
+
+
+def get_dataset_filename(split):
+    filename = {
+        'train': ('train_img.txt', 'train_label.txt'),
+        'test': ('test_img.txt', 'test_label.txt'),
+        'database': ('database_img.txt', 'database_label.txt')
+    }
+    return filename[split]
+
+
+def get_data_loader(data_dir, dataset_name, split, batch_size, shuffle=False, num_workers=4):
+    """
+    return dataloader and data number
+    :param num_workers:
+    :param shuffle:
+    :param batch_size:
+    :param data_dir:
+    :param dataset_name:
+    :param split: choice from ('train, 'test', 'database')
+    :return:
+    """
+    file_name, label_name = get_dataset_filename(split)
+    dataset = HashingDataset(os.path.join(data_dir, dataset_name), file_name, label_name)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    return data_loader, len(dataset)
+
+
+def get_data_label(data_dir, dataset_name, split):
+    _, label_name = get_dataset_filename(split)
+    return np.loadtxt(os.path.join(data_dir, dataset_name, label_name), dtype=int)

@@ -4,11 +4,9 @@ import torch
 import argparse
 import numpy as np
 from tqdm import tqdm
-from torch.utils.data import DataLoader
-from utils.data_provider import HashingDataset, load_label, get_classes_num
+from utils.data_provider import get_data_loader, get_classes_num
 from utils.util import import_class, get_batch, retrieve_images, str2bool
 from utils.hamming_matching import cal_map
-
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -18,18 +16,12 @@ class Hashing(object):
         self.args = args
 
         # load dataset
-        dset_database = HashingDataset(args.data_dir + args.dataset, args.database_file, args.database_label)
-        dset_train = HashingDataset(args.data_dir + args.dataset, args.train_file, args.train_label)
-        dset_test = HashingDataset(args.data_dir + args.dataset, args.test_file, args.test_label)
-        self.num_database, self.num_test, self.num_train = len(dset_database), len(dset_test), len(dset_train)
-
-        self.database_loader = DataLoader(dset_database, batch_size=args.batch_size, shuffle=False, num_workers=4)
-        self.train_loader = DataLoader(dset_train, batch_size=args.batch_size, shuffle=True, num_workers=4)
-        self.test_loader = DataLoader(dset_test, batch_size=args.batch_size, shuffle=False, num_workers=4)
-
-        self.database_labels = load_label(args.database_label, args.data_dir + args.dataset)
-        self.train_labels = load_label(args.train_label, args.data_dir + args.dataset)
-        self.test_labels = load_label(args.test_label, args.data_dir + args.dataset)
+        self.database_loader, self.num_database = get_data_loader(args.data_dir, args.dataset, 'database',
+                                                                  args.batch_size, shuffle=False)
+        self.train_loader, self.num_train = get_data_loader(args.data_dir, args.dataset, 'train',
+                                                            args.batch_size, shuffle=True)
+        self.test_loader, self.num_test = get_data_loader(args.data_dir, args.dataset, 'test',
+                                                          args.batch_size, shuffle=False)
 
         # load model
         if args.load:
@@ -193,7 +185,7 @@ def parser_arguments():
     parser = argparse.ArgumentParser()
     # description of data
     parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
-                        choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS COCO'],
+                        choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
                         help='name of the dataset')
     parser.add_argument('--data_dir', dest='data_dir', default='../data/', help='path of the dataset')
     parser.add_argument('--database_file', dest='database_file', default='database_img.txt',
@@ -219,7 +211,8 @@ def parser_arguments():
     # training or test
     parser.add_argument('--train', dest='train', type=str2bool, default=False, choices=[True, False],
                         help='to train or not')
-    parser.add_argument('--test', dest='test', type=str2bool, default=True, choices=[True, False], help='to test or not')
+    parser.add_argument('--test', dest='test', type=str2bool, default=False, choices=[True, False],
+                        help='to test or not')
     parser.add_argument('--generate', dest='generate', type=str2bool, default=False, choices=[True, False],
                         help='to generate or not')
     parser.add_argument('--retrieve', dest='retrieve', type=str2bool, default=False, choices=[True, False],

@@ -1,5 +1,7 @@
 import os
 import argparse
+import time
+
 import numpy as np
 from utils.data_provider import HashingDataset
 from utils.hamming_matching import cal_hamming_dis
@@ -58,3 +60,16 @@ def retrieve_images(query_images, query_labels, query_codes, database_codes, top
         batch_labels_arr.append(labels_arr)
 
     return np.array(batch_images_arr), np.array(batch_labels_arr)
+
+
+class Logger(object):
+    def __init__(self, path, filename):
+        self.log_file = os.path.join(path, filename)
+
+    def log(self, string, print_time=True):
+        if print_time:
+            localtime = time.strftime('%m-%d %H:%M:%S', time.localtime(time.time()))
+            string = "[" + localtime + '] ' + string
+        print(string)
+        with open(self.log_file, 'a') as f:
+            print(string, file=f)
