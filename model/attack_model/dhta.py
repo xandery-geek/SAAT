@@ -1,10 +1,9 @@
-import time
 import collections
 import pandas as pd
-import torch.nn.functional as F
 from utils.data_provider import *
 from utils.hamming_matching import *
 from model.attack_model.util import *
+from utils.util import Logger
 
 
 def target_adv_loss(noisy_output, target_hash):
@@ -27,7 +26,7 @@ def target_hash_adv(model, query, target_hash, epsilon, step=1, iteration=2000, 
         loss.backward()
 
         # delta.data = delta - step * delta.grad.detach() / (torch.norm(delta.grad.detach(), 2) + 1e-9)
-        delta.data = delta - step/255 * torch.sign(delta.grad.detach())
+        delta.data = delta - step / 255 * torch.sign(delta.grad.detach())
         # delta.data = delta - step * delta.grad.detach()
         delta.data = delta.data.clamp(-epsilon, epsilon)
         delta.data = (query.data + delta.data).clamp(0, 1) - query.data
@@ -56,92 +55,42 @@ def sample_image(image, name, sample_dir='sample/dhta'):
     image = transforms.ToPILImage()(image.float())
     image.save(os.path.join(sample_dir, name + '.png'), quality=100)
 
-# def sample_image(image, name, sample_dir='sample/dhta'):
-#     image = image.cpu().numpy()[0] * 255
-#     image = np.array(image, dtype=np.uint8)
-#     image = np.transpose(image, (1,2,0))
-#     image = Image.fromarray(image)
-#     image.save(os.path.join(sample_dir, name + '.jpg'))
 
-
-def dhta(args):
+def dhta(args, num_target=9, epsilon=8 / 255.):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
+    method = 'P2P' if num_target == 1 else 'DHTA'
 
-    DATABASE_FILE = 'database_img.txt'
-    TEST_FILE = 'test_img.txt'
-    DATABASE_LABEL = 'database_label.txt'
-    TEST_LABEL = 'test_label.txt'
-
-    epsilon = 8
-    epsilon = epsilon / 255.
-    n_t = 9
-    iteration = 0
-    method = 'DHTA'
-    if n_t == 1:
-        method = 'P2P'
-    transfer = False
-
+    # load model
     attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
     model_path = 'checkpoint/{}.pth'.format(attack_model)
     model = load_model(model_path)
-    database_code_path = 'log/database_code_{}_{}_{}_{}.txt'.format(dataset, model_name, backbone, bit)
 
-    if transfer:
-        t_model_name = 'DPH'
-        t_bit = 32
-        t_backbone = 'AlexNet'
-        t_model_path = 'checkpoint/{}_{}_{}_{}.pth'.format(args.dataset, t_model_name, t_backbone, t_bit)
-        t_model = load_model(t_model_path)
-    else:
-        t_model_name = args.hash_method
-        t_bit = args.bit
-        t_backbone = args.backbone
-    t_database_code_path = 'log/database_code_{}_{}_{}_{}.txt'.format(dataset, t_model_name, t_backbone, t_bit)
-    target_label_path = 'log/target_label_dhta_{}.txt'.format(dataset)
-    test_code_path = 'log/test_code_{}_{}_{}.txt'.format(dataset, method, t_bit)
-
-
-    # data processing
+    # load dataset
     database_loader, num_database = get_data_loader(args.data_dir, args.dataset, 'database',
                                                     args.batch_size, shuffle=False)
     test_loader, num_test = get_data_loader(args.data_dir, args.dataset, 'test',
                                             args.batch_size, shuffle=False)
 
-    if os.path.exists(database_code_path):
-        database_hash = np.loadtxt(database_code_path, dtype=np.float)
-    else:
-        database_hash = GenerateCode(model, database_loader, num_database, bit)
-        np.savetxt(database_code_path, database_hash, fmt="%d")
+    database_hash, _ = get_database_code(model, database_loader, attack_model)
 
-    if os.path.exists(t_database_code_path):
-        t_database_hash = np.loadtxt(t_database_code_path, dtype=np.float)
-    else:
-        t_database_hash = GenerateCode(t_model, database_loader, num_database, t_bit)
-        np.savetxt(t_database_code_path, t_database_hash, fmt="%d")
+    test_labels_int = get_data_label(args.data_dir, args.dataset, 'test')
+    database_labels_int = get_data_label(args.data_dir, args.dataset, 'database')
 
-
-
-    print('database hash codes prepared!')
-
-    test_labels_int = np.loadtxt(os.path.join(DATA_DIR, TEST_LABEL), dtype=int)
-    database_labels_int = np.loadtxt(os.path.join(DATA_DIR, DATABASE_LABEL), dtype=int)
-    test_labels_str = [''.join(label) for label in test_labels_int.astype(str)]
+    # convert one-hot code to string
     database_labels_str = [''.join(label) for label in database_labels_int.astype(str)]
-    test_labels_str = np.array(test_labels_str, dtype=str)
     database_labels_str = np.array(database_labels_str, dtype=str)
 
-
-    # target_labels = torch.from_numpy(database_labels_int).unique(dim=0)
-    # print(target_labels.shape)
-
-
+    # calculate target label
+    target_label_path = 'log/target_label_dhta_{}.txt'.format(args.dataset)
 
     if os.path.exists(target_label_path):
+        print("Loading target label from {}".format(target_label_path))
         target_labels = np.loadtxt(target_label_path, dtype=np.int)
     else:
+        print("Generating target label")
         candidate_labels_count = collections.Counter(database_labels_str)
         candidate_labels_count = pd.DataFrame.from_dict(candidate_labels_count, orient='index').reset_index()
-        candidate_labels = candidate_labels_count[candidate_labels_count[0] > n_t]['index']
+        candidate_labels = candidate_labels_count[candidate_labels_count[0] > num_target]['index']
         candidate_labels = np.array(candidate_labels, dtype=str)
 
         candidate_labels_int = [list(candidate_labels[i]) for i in range(len(candidate_labels))]
@@ -153,29 +102,20 @@ def dhta(args):
         for i in range(num_test):
             label_ori = test_labels_int[i]
             s = S[i]
-            candidate_index = np.where(s==0)
+            candidate_index = np.where(s == 0)
             random_index = np.random.choice(candidate_index[0])
             target_label = candidate_labels_int[random_index]
             target_label = np.array(target_label, dtype=int)
             target_labels.append(target_label)
 
-        # target_labels = []
-        # for i in range(num_test):
-        #     # lable_str = test_labels_str[i]
-        #     # candidate_labels_str = np.delete(candidate_labels, np.where(candidate_labels==lable_str))
-        #     target_label_str = np.random.choice(candidate_labels)
-        #     target_label = list(target_label_str)
-        #     target_label = np.array(target_label, dtype=int)
-        #     target_labels.append(target_label)
-
         target_labels = np.array(target_labels, dtype=np.int)
         np.savetxt(target_label_path, target_labels, fmt="%d")
 
-
     target_labels_str = [''.join(label) for label in target_labels.astype(str)]
-    qB = np.zeros([num_test, t_bit], dtype=np.float32)
-    query_anchor_codes = np.zeros((num_test, bit), dtype=np.float)
-    perceptibility = 0
+
+    qB = np.zeros([num_test, args.bit], dtype=np.float32)
+    query_anchor_codes = np.zeros((num_test, args.bit), dtype=np.float)
+    # perceptibility = 0
     for it, data in enumerate(test_loader):
         queries, _, index = data
         # sample_image(queries, '{}_benign'.format(it))
@@ -185,63 +125,36 @@ def dhta(args):
         queries = queries.cuda()
         batch_size_ = index.size(0)
 
-        anchor_codes = torch.zeros((batch_size_, bit), dtype=torch.float)
+        anchor_codes = torch.zeros((batch_size_, args.bit), dtype=torch.float)
         for i in range(batch_size_):
+            # select hash code which has the same label with target from database randomly
             target_label_str = target_labels_str[index[0] + i]
             anchor_indexes = np.where(database_labels_str == target_label_str)
-            anchor_indexes = np.random.choice(anchor_indexes[0], size=n_t)
+            anchor_indexes = np.random.choice(anchor_indexes[0], size=num_target)
 
-            anchor_code = hash_anchor_code(
-                torch.from_numpy(database_hash[anchor_indexes]))
-            anchor_code = anchor_code.view(1, bit)
+            anchor_code = hash_anchor_code(torch.from_numpy(database_hash[anchor_indexes]))
+            anchor_code = anchor_code.view(1, args.bit)
             anchor_codes[i, :] = anchor_code
 
-        query_anchor_codes[it*batch_size:it*batch_size+batch_size_] = anchor_codes.numpy()
+        query_anchor_codes[it * args.batch_size:it * args.batch_size + batch_size_] = anchor_codes.numpy()
+        query_adv = target_hash_adv(model, queries, anchor_codes.cuda(), epsilon, iteration=args.iteration)
+        u_ind = np.linspace(it * args.batch_size, np.min((num_test, (it + 1) * args.batch_size)) - 1,
+                            batch_size_, dtype=int)
 
-        query_adv = target_hash_adv(model, queries, anchor_codes.cuda(), epsilon, iteration=iteration)
-        # queries = queries.detach().cpu().numpy()[0] * 255
-        # queries = queries.astype(np.uint8)
-        # queries = np.transpose(queries, (1,2,0))
-        # queries = Image.fromarray(queries)
-        # queries.save('0.jpg', quality=100)
-        # queries = Image.open('0.jpg')
-        # queries = np.array(queries, dtype=np.int)
-        # query_adv = query_adv.detach().cpu().numpy()[0] * 255
-        # query_adv = query_adv.astype(np.uint8)
-        # query_adv = np.transpose(query_adv, (1,2,0))
-        # query_adv = Image.fromarray(query_adv)
-        # query_adv.save('1.jpg', quality=100)
-        # query_adv = Image.open('1.jpg')
-        # query_adv = np.array(query_adv, dtype=np.int)
-        # print(np.max(query_adv-queries))
-        # exit(0)
-        # sample_image(query_adv, '{}_adv'.format(it))
-        u_ind = np.linspace(it * batch_size, np.min((num_test, (it + 1) * batch_size)) - 1, batch_size_, dtype=int)
-
-        perceptibility += F.mse_loss(queries, query_adv).data * batch_size_
-
-        # if it > 3:
-        #     end=time.time()
-        #     print('Running time: %s Seconds'%(end-start))
-        #     print(torch.sqrt(perceptibility/(n)))
-        #     exit(0)
-
-        if transfer:
-            query_code = generate_hash(t_model, query_adv, batch_size_, t_bit)
-        else:
-            query_code = generate_hash(model, query_adv, batch_size_, bit)
+        # perceptibility += F.mse_loss(queries, query_adv).data * batch_size_
+        query_code = generate_hash(model, query_adv, batch_size_, args.bit)
         qB[u_ind, :] = query_code
 
-
+    # test_code_path = 'log/test_code_{}_{}_{}.txt'.format(args.dataset, method, args.bit)
     # qB = np.loadtxt(test_code_path, dtype=np.float)
-
-
-    np.savetxt(test_code_path, qB, fmt="%d")
+    # np.savetxt(test_code_path, qB, fmt="%d")
     # print('perceptibility: {:.7f}'.format(torch.sqrt(perceptibility/num_test)))
-    # a_map = CalcMap(query_anchor_codes, t_database_hash, target_labels, database_labels_int)
-    # print('[Retrieval Phase] t-MAP(retrieval database): %3.5f' % a_map)
-    # t_map = CalcMap(qB, t_database_hash, target_labels, database_labels_int)
-    # print('[Retrieval Phase] t-MAP(retrieval database): %3.5f' % t_map)
-    map = CalcMap(qB, t_database_hash, test_labels_int, database_labels_int)
-    print('[Retrieval Phase] MAP(retrieval database): %3.5f' % map)
 
+    a_map = cal_map(database_hash, query_anchor_codes, database_labels_int, target_labels, 5000)
+    t_map = cal_map(database_hash, qB, database_labels_int, target_labels, 5000)
+    _map = cal_map(database_hash, qB, database_labels_int, test_labels_int, 5000)
+
+    logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
+    logger.log('AnchorCode t-MAP(retrieval database) :{}'.format(a_map))
+    logger.log('DHTA t-MAP(retrieval database) :{}'.format(t_map))
+    logger.log('DHTA MAP(retrieval database): {}'.format(_map))

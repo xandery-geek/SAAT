@@ -3,7 +3,6 @@ import numpy as np
 from PIL import Image
 
 import torch
-from torch.autograd import Variable
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 from torch.utils.data import DataLoader
@@ -53,16 +52,6 @@ def load_label(filename, data_dir):
     label_filepath = os.path.join(data_dir, filename)
     label = np.loadtxt(label_filepath, dtype=np.int64)
     return torch.from_numpy(label).float()
-
-
-def generate_hash_code(model, data_loader, num_data, bit):
-    B = np.zeros([num_data, bit], dtype=np.float32)
-    for iter, data in enumerate(data_loader, 0):
-        data_input, _, data_ind = data
-        data_input = Variable(data_input.cuda())
-        output = model(data_input)
-        B[data_ind.numpy(), :] = torch.sign(output.cpu().data).numpy()
-    return B
 
 
 def get_classes_num(dataset):

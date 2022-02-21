@@ -1,11 +1,16 @@
+import torch
 import argparse
 from model.attack_model.hag import hag
 from model.attack_model.sdha import sdha
+from model.attack_model.dhta import dhta
+
+
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', dest='model', default='hag', help='name of attack model')
+    parser.add_argument('--method', dest='method', default='hag', help='name of attack method')
     parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
                         choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
                         help='name of the dataset')
@@ -18,7 +23,7 @@ def parser_arguments():
                         choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
-    parser.add_argument('--batch_size', dest='batch_size', type=int, default=256, help='number of images in one batch')
+    parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
     parser.add_argument('--iteration', dest='iteration', type=int, default=2000, help='number of images in one batch')
     return parser.parse_args()
 
@@ -26,7 +31,13 @@ def parser_arguments():
 if __name__ == '__main__':
     args = parser_arguments()
 
-    if args.model == 'hag':
+    if args.method == 'hag':
         hag(args)
-    elif args.model == 'sdha':
+    elif args.method == 'sdha':
         sdha(args)
+    elif args.method == 'dhta':
+        dhta(args)
+    elif args.method == 'p2p':
+        dhta(args, num_target=1)
+    else:
+        raise NotImplementedError("Method {} not implemented".format(args.method))

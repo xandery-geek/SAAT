@@ -2,4 +2,6 @@
 log/
 checkpoint/
 tmp/
+documents/
 *.iml
+.DS_Store
