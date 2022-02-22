@@ -156,5 +156,5 @@ def dhta(args, num_target=9, epsilon=8 / 255.):
 
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('AnchorCode t-MAP(retrieval database) :{}'.format(a_map))
-    logger.log('DHTA t-MAP(retrieval database) :{}'.format(t_map))
-    logger.log('DHTA MAP(retrieval database): {}'.format(_map))
+    logger.log('{} t-MAP(retrieval database) :{}'.format(method, t_map))
+    logger.log('{} MAP(retrieval database): {}'.format(method, _map))

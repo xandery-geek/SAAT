@@ -30,15 +30,13 @@ def surrogate_function(h_hat, h, idx, sigma=5, z=0.5):
     for i in range(batch_size):
         q = h_hat[i]  # 1 * k
         r_idx = torch.where(similarity[i] > 0)[0]
-        r = g_code[r_idx]  # n_{u} * k
+        r = h[i].unsqueeze(0) if r_idx.size(dim=0) == 0 else g_code[r_idx]  # n_{u} * k
         r = r.sign()
-
-        # r = h[i].unsqueeze(0).repeat(2, 1).sign()
         dis = 0.5 * torch.sum(torch.abs(q - r) * torch.sigmoid(sigma * q * r), dim=1) + \
               torch.sum(1 - torch.sigmoid(sigma * q * r), dim=1)
         w = torch.pow(cal_hamming_dis(q.sign(), r) + 1e-8, -z)
-        loss += - torch.mean(dis * w)
-    return loss / batch_size
+        loss += torch.mean(dis * w)
+    return - loss / batch_size
 
 
 def sdha_loss(x_hat, x, h_hat, h, idx, alpha=25.):
