@@ -1,9 +1,10 @@
-import torch.nn.functional as F
+import argparse
 
+import torch.nn.functional as F
 from utils.data_provider import *
 from utils.hamming_matching import *
-
-os.environ["CUDA_VISIBLE_DEVICES"] = '1'
+from model.attack_model.util import load_model, get_database_code, generate_code
+from utils.util import Logger
 
 
 def adv_loss(noisy_output, target_hash):
@@ -46,7 +47,7 @@ def hash_center_code(y, B, L, bit):
     for i in range(y.size(0)):
         l = y[i].repeat(L.size(0), 1)
         w = torch.sum(l * L, dim=1) / torch.sum(torch.sign(l + L), dim=1)
-        w1 = w.repeat(32, 1).t()
+        w1 = w.repeat(bit, 1).t()
         w2 = 1 - torch.sign(w1)
         code[i] = torch.sign(torch.sum(w1 * B - w2 * B, dim=0))
     return code
@@ -58,104 +59,85 @@ def sample_image(image, name, sample_dir='sample/attack'):
     image.save(os.path.join(sample_dir, name + '.png'), quality=100)
 
 
-classes_dic = {'CIFAR-10': 10, 'ImageNet': 100, 'FLICKR-25K': 38, 'NUS-WIDE': 21, 'MS-COCO': 80}
-dataset = 'NUS-WIDE'
-data_dir = '../data/{}'.format(dataset)
-database_file = 'database_img.txt'
-train_file = 'train_img.txt'
-test_file = 'test_img.txt'
-database_label = 'database_label.txt'
-train_label = 'train_label.txt'
-test_label = 'test_label.txt'
-num_classes = classes_dic[dataset]
-model_name = 'DPH'
-backbone = 'AlexNet'
-defense = ''
-batch_size = 32
-bit = 32
-epsilon = 8 / 255.0
-iteration = 100
+def central_attack(args, epsilon=0.039):
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.device
+    method = 'CentralAttack'
+    # load model
+    attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
+    model_path = 'checkpoint/{}.pth'.format(attack_model)
+    model = load_model(model_path)
 
-lr = 1e-4
-transfer = False
+    # load dataset
+    database_loader, num_database = get_data_loader(args.data_dir, args.dataset, 'database',
+                                                    args.batch_size, shuffle=False)
+    train_loader, num_train = get_data_loader(args.data_dir, args.dataset, 'test',
+                                              args.batch_size, shuffle=True)
+    test_loader, num_test = get_data_loader(args.data_dir, args.dataset, 'test',
+                                            args.batch_size, shuffle=False)
 
-dset_database = HashingDataset(data_dir, database_file, database_label)
-dset_train = HashingDataset(data_dir, train_file, train_label)
-dset_test = HashingDataset(data_dir, test_file, test_label)
-database_loader = DataLoader(dset_database, batch_size=batch_size, shuffle=False, num_workers=4)
-train_loader = DataLoader(dset_train, batch_size=batch_size, shuffle=True, num_workers=4)
-test_loader = DataLoader(dset_test, batch_size=batch_size, shuffle=False, num_workers=4)
-num_database, num_train, num_test = len(dset_database), len(dset_train), len(dset_test)
+    # load hashcode and labels
+    database_hash, _ = get_database_code(model, database_loader, attack_model)
+    test_labels = get_data_label(args.data_dir, args.dataset, 'test')
+    database_labels = get_data_label(args.data_dir, args.dataset, 'database')
 
-database_labels = load_label(database_label, data_dir)
-train_labels = load_label(train_label, data_dir)
-test_labels = load_label(test_label, data_dir)
-target_labels = database_labels.unique(dim=0)
+    #
+    train_B, train_L = generate_code(model, train_loader)
+    train_B, train_L = torch.from_numpy(train_B), torch.from_numpy(train_L)
+    train_B, train_L = train_B.cuda(), train_L.cuda()
 
-model_path = 'checkpoint/{}{}_{}_{}_{}.pth'.format(defense, dataset, model_name, backbone, bit)
-model = load_model(model_path)
-database_code_path = 'log/{}database_code_{}_{}_{}_{}.txt'.format(defense, dataset, model_name, backbone, bit)
+    qB = np.zeros([num_test, args.bit], dtype=np.float32)
+    cB = np.zeros([num_test, args.bit], dtype=np.float32)
+    perceptibility = 0
+    for it, data in enumerate(test_loader):
+        queries, labels, index = data
+        queries = queries.cuda()
+        labels = labels.cuda()
+        batch_size_ = index.size(0)
 
-if transfer:
-    t_model_name = 'DPH'
-    t_bit = 32
-    t_backbone = 'ResNet18'
-    t_model_path = 'checkpoint/{}{}_{}_{}_{}_{}.pth'.format(defense, dataset, t_model_name, t_backbone, t_bit)
-    t_model = load_model(t_model_path)
-else:
-    t_model_name = model_name
-    t_bit = bit
-    t_backbone = backbone
-t_database_code_path = 'log/{}database_code_{}_{}_{}_{}.txt'.format(defense, dataset, t_model_name, t_backbone, t_bit)
-target_label_path = 'log/target_label_attack_{}.txt'.format(dataset)
-test_code_path = 'log/test_code_{}_attack_{}.txt'.format(dataset, t_bit)
+        n = index[-1].item() + 1
+        print(n)
 
-if os.path.exists(database_code_path):
-    database_hash = np.loadtxt(database_code_path, dtype=np.float)
-else:
-    database_hash = generate_hash_code(model, database_loader, num_database, bit)
-    np.savetxt(database_code_path, database_hash, fmt="%d")
-if os.path.exists(t_database_code_path):
-    t_database_hash = np.loadtxt(t_database_code_path, dtype=np.float)
-else:
-    t_database_hash = generate_hash_code(t_model, database_loader, num_database, t_bit)
-    np.savetxt(t_database_code_path, t_database_hash, fmt="%d")
-print('database hash codes prepared!')
+        center_codes = hash_center_code(labels, train_B, train_L, args.bit)
+        query_adv = hash_adv(model, queries, center_codes, epsilon, iteration=args.iteration)
 
-train_B, train_L = generate_code_label(model, train_loader, num_train, bit, num_classes)
-qB = np.zeros([num_test, t_bit], dtype=np.float32)
-perceptibility = 0
-for it, data in enumerate(test_loader):
-    queries, labels, index = data
-    queries = queries.cuda()
-    labels = labels.cuda()
-    batch_size_ = index.size(0)
+        perceptibility += F.mse_loss(queries, query_adv).data * batch_size_
 
-    n = index[-1].item() + 1
-    print(n)
-
-    center_codes = hash_center_code(labels, train_B, train_L, bit)
-    query_adv = hash_adv(model, queries, center_codes, epsilon, iteration=iteration)
-
-    perceptibility += F.mse_loss(queries, query_adv).data * batch_size_
-
-    if transfer:
-        query_code = t_model(query_adv)
-    else:
         query_code = model(query_adv)
-    query_code = torch.sign(query_code)
-    qB[index.numpy(), :] = query_code.cpu().data.numpy()
+        query_code = torch.sign(query_code)
+        qB[index.numpy(), :] = query_code.cpu().data.numpy()
+        cB[index.numpy(), :] = (-center_codes).cpu().data.numpy()
 
-    # sample_image(queries, '{}_benign'.format(it))
-    # sample_image(query_adv, '{}_adv'.format(it))
+        # sample_image(queries, '{}_benign'.format(it))
+        # sample_image(query_adv, '{}_adv'.format(it))
 
-# np.savetxt(test_code_path, qB, fmt="%d")
-# print('perceptibility: {:.7f}'.format(torch.sqrt(perceptibility/num_test)))
-# p_map = CalcMap(query_prototype_codes, t_database_hash, targeted_labels, database_labels.numpy())
-# print('[Retrieval Phase] t-MAP(retrieval database): %3.5f' % p_map)
-# t_map = CalcMap(qB, t_database_hash, targeted_labels, database_labels.numpy())
-# print('[Retrieval Phase] t-MAP(retrieval database): %3.5f' % t_map)
-map = CalcTopMap(qB, database_hash, test_labels.numpy(), database_labels.numpy(), 5000)
-print('[Retrieval Phase] MAP(retrieval database): %3.5f' % map)
-map = CalcMap(qB, database_hash, test_labels.numpy(), database_labels.numpy())
-print('[Retrieval Phase] MAP(retrieval database): %3.5f' % map)
+    logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
+    logger.log('perceptibility: {:.7f}'.format(torch.sqrt(perceptibility/num_test)))
+
+    map_val = cal_map(database_hash, cB, database_labels, test_labels, 5000)
+    logger.log('Theory MAP(retrieval database): {}'.format(map_val))
+    map_val = cal_map(database_hash, qB, database_labels, test_labels, 5000)
+    logger.log('Central Attack MAP(retrieval database): {}'.format(map_val))
+
+
+def parser_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--method', dest='method', default='hag', help='name of attack method')
+    parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
+                        choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
+                        help='name of the dataset')
+    parser.add_argument('--data_dir', dest='data_dir', default='../data/', help='path of the dataset')
+    parser.add_argument('--device', dest='device', type=str, default='0', help='gpu device')
+    parser.add_argument('--hash_method', dest='hash_method', default='DPH',
+                        choices=['DPH', 'DPSH', 'HashNet'],
+                        help='deep hashing methods')
+    parser.add_argument('--backbone', dest='backbone', default='AlexNet',
+                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
+                        help='backbone network')
+    parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
+    parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
+    parser.add_argument('--iteration', dest='iteration', type=int, default=100, help='number of images in one batch')
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    central_attack(parser_arguments())

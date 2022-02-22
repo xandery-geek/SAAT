@@ -3,6 +3,7 @@ import argparse
 from model.attack_model.hag import hag
 from model.attack_model.sdha import sdha
 from model.attack_model.dhta import dhta
+from central_attack import central_attack
 
 
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -39,5 +40,7 @@ if __name__ == '__main__':
         dhta(args)
     elif args.method == 'p2p':
         dhta(args, num_target=1)
+    elif args.method == 'central':
+        central_attack(args)
     else:
         raise NotImplementedError("Method {} not implemented".format(args.method))

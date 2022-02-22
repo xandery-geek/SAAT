@@ -106,9 +106,11 @@ def hag(args):
     database_code, database_labels = get_database_code(model, database_loader, attack_model)
 
     # calculate map
+    theory_map = cal_map(database_code, -test_code, database_labels, test_labels, 5000)
     ori_map = cal_map(database_code, test_code, database_labels, test_labels, 5000)
     adv_map = cal_map(database_code, test_code_hat, database_labels, test_labels, 5000)
 
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('Ori MAP(retrieval database): {}'.format(ori_map))
+    logger.log('Theory MAP(retrieval database): {}'.format(theory_map))
     logger.log('HAG MAP(retrieval database): {}'.format(adv_map))

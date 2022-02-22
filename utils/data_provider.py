@@ -41,13 +41,6 @@ class HashingDataset(Dataset):
         return len(self.img_filename)
 
 
-def load_model(path):
-    model = torch.load(path)
-    model = model.cuda()
-    model.eval()
-    return model
-
-
 def load_label(filename, data_dir):
     label_filepath = os.path.join(data_dir, filename)
     label = np.loadtxt(label_filepath, dtype=np.int64)
