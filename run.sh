@@ -1,12 +1,12 @@
 
 function run_hash() {
   echo "Running $1 bits"
-  python hashing.py --train True --code_length $1 --dataset $2 --device $3
+  python hashing.py --train True --code_length "$1" --dataset "$2" --device "$3"
 }
 
 function run_attack() {
   echo "Running $1 bits"
-  python attack.py --code_length $1 --dataset $2 --device $3  --method $4
+  python attack.py --code_length "$1" --dataset "$2" --device "$3"  --method "$4"
 }
 
 dataset=$1

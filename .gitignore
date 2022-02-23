@@ -5,3 +5,4 @@ tmp/
 documents/
 *.iml
 .DS_Store
+tmp*

@@ -48,7 +48,7 @@ def load_label(filename, data_dir):
 
 
 def get_classes_num(dataset):
-    classes_dic = {'FLICKR-25K': 38, 'NUS-WIDE': 21, 'MS-COCO': 80}
+    classes_dic = {'CIFAR-10': 10, 'ImageNet': 100, 'FLICKR-25K': 38, 'NUS-WIDE': 21, 'MS-COCO': 80}
     return classes_dic[dataset]
 
 

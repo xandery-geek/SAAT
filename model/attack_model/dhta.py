@@ -151,10 +151,12 @@ def dhta(args, num_target=9, epsilon=8 / 255.):
     # print('perceptibility: {:.7f}'.format(torch.sqrt(perceptibility/num_test)))
 
     a_map = cal_map(database_hash, query_anchor_codes, database_labels_int, target_labels, 5000)
+    a_t_map = cal_map(database_hash, query_anchor_codes, database_labels_int, test_labels_int, 5000)
     t_map = cal_map(database_hash, qB, database_labels_int, target_labels, 5000)
     _map = cal_map(database_hash, qB, database_labels_int, test_labels_int, 5000)
 
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('AnchorCode t-MAP(retrieval database) :{}'.format(a_map))
+    logger.log('AnchorCode MAP(retrieval database) :{}'.format(a_t_map))
     logger.log('{} t-MAP(retrieval database) :{}'.format(method, t_map))
     logger.log('{} MAP(retrieval database): {}'.format(method, _map))

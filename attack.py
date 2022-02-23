@@ -32,6 +32,7 @@ def parser_arguments():
 if __name__ == '__main__':
     args = parser_arguments()
 
+    print("Current Method: {}".format(args.method))
     if args.method == 'hag':
         hag(args)
     elif args.method == 'sdha':
@@ -41,6 +42,7 @@ if __name__ == '__main__':
     elif args.method == 'p2p':
         dhta(args, num_target=1)
     elif args.method == 'central':
+        args.iteration = 100
         central_attack(args)
     else:
         raise NotImplementedError("Method {} not implemented".format(args.method))
