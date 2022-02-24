@@ -105,6 +105,9 @@ def hag(args):
 
     database_code, database_labels = get_database_code(model, database_loader, attack_model)
 
+    # save code
+    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), test_code_hat)
+
     # calculate map
     theory_map = cal_map(database_code, -test_code, database_labels, test_labels, 5000)
     ori_map = cal_map(database_code, test_code, database_labels, test_labels, 5000)
@@ -114,3 +117,15 @@ def hag(args):
     logger.log('Ori MAP(retrieval database): {}'.format(ori_map))
     logger.log('Theory MAP(retrieval database): {}'.format(theory_map))
     logger.log('HAG MAP(retrieval database): {}'.format(adv_map))
+
+    # calculate P-R curve
+    # pr_arr = cal_pr(database_code, test_code, database_labels, test_labels, interval=0.01)
+    # np.save(os.path.join('log', attack_model, '{}-pr_ori.npy'.format(method)), pr_arr)
+    #
+    # pr_arr = cal_pr(database_code, test_code_hat, database_labels, test_labels, interval=0.01)
+    # np.save(os.path.join('log', attack_model, '{}-pr_adv.npy'.format(method)), pr_arr)
+    #
+    # top_n = cal_top_n(database_code, test_code, database_labels, test_labels)
+    # np.save(os.path.join('log', attack_model, '{}-topn_ori.npy'.format(method)), top_n)
+    # top_n = cal_top_n(database_code, test_code_hat, database_labels, test_labels)
+    # np.save(os.path.join('log', attack_model, '{}-topn_adv.npy'.format(method)), top_n)

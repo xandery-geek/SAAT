@@ -3,16 +3,16 @@ import argparse
 import torch.nn.functional as F
 from utils.data_provider import *
 from utils.hamming_matching import *
-from model.attack_model.util import load_model, get_database_code, generate_code
+from model.attack_model.util import load_model, get_database_code, generate_code, get_alpha
 from utils.util import Logger
 
 
 def adv_loss(noisy_output, target_hash):
-    loss = torch.mean(noisy_output * target_hash)
-    # sim = noisy_output * target_hash
-    # w = (sim>-0.5).int()
-    # sim = w*(sim+2)*sim
-    # loss = torch.mean(sim)
+    # loss = torch.mean(noisy_output * target_hash)
+    sim = noisy_output * target_hash
+    w = (sim > -0.5).int()
+    sim = w * (sim + 2) * sim
+    loss = torch.mean(sim)
     return loss
 
 
@@ -24,7 +24,8 @@ def hash_adv(model, query, target_hash, epsilon, step=1, iteration=2000, randomi
     delta.requires_grad = True
 
     for i in range(iteration):
-        noisy_output = model(query + delta)
+        alpha = get_alpha(i, iteration)
+        noisy_output = model(query + delta, alpha)
         loss = adv_loss(noisy_output, target_hash.detach())
         loss.backward()
 
@@ -49,7 +50,11 @@ def hash_center_code(y, B, L, bit):
         w = torch.sum(l * L, dim=1) / torch.sum(torch.sign(l + L), dim=1)
         w1 = w.repeat(bit, 1).t()
         w2 = 1 - torch.sign(w1)
-        code[i] = torch.sign(torch.sum(w1 * B - w2 * B, dim=0))
+        c = w2.sum() / bit
+        w1 = 1 - w2
+        # code[i] = torch.sign(torch.sum(w1*B-w2*B, dim=0))
+        code[i] = torch.sign(torch.sum(c * w1 * B - (L.size(0) - c) * w2 * B, dim=0))
+        # code[i] = torch.sign(torch.sum(w1*B, dim=0))
     return code
 
 
@@ -86,6 +91,7 @@ def central_attack(args, epsilon=0.039):
     train_B, train_L = train_B.cuda(), train_L.cuda()
 
     qB = np.zeros([num_test, args.bit], dtype=np.float32)
+    qB_ori = np.zeros([num_test, args.bit], dtype=np.float32)
     cB = np.zeros([num_test, args.bit], dtype=np.float32)
     perceptibility = 0
     for it, data in enumerate(test_loader):
@@ -105,18 +111,38 @@ def central_attack(args, epsilon=0.039):
         query_code = model(query_adv)
         query_code = torch.sign(query_code)
         qB[index.numpy(), :] = query_code.cpu().data.numpy()
-        cB[index.numpy(), :] = (-center_codes).cpu().data.numpy()
+        qB_ori[index.numpy(), :] = model(queries).sign().cpu().data.numpy()
+        cB[index.numpy(), :] = center_codes.cpu().data.numpy()
 
         # sample_image(queries, '{}_benign'.format(it))
         # sample_image(query_adv, '{}_adv'.format(it))
 
-    logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
-    logger.log('perceptibility: {:.7f}'.format(torch.sqrt(perceptibility/num_test)))
+    # save code
+    np.save(os.path.join('log', attack_model, 'original_code.npy'), qB_ori)
+    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), qB)
 
-    map_val = cal_map(database_hash, cB, database_labels, test_labels, 5000)
-    logger.log('Theory MAP(retrieval database): {}'.format(map_val))
+    # calculate map
+    logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
+    logger.log('perceptibility: {:.7f}'.format(torch.sqrt(perceptibility / num_test)))
+
     map_val = cal_map(database_hash, qB, database_labels, test_labels, 5000)
     logger.log('Central Attack MAP(retrieval database): {}'.format(map_val))
+    map_val = cal_map(database_hash, -cB, database_labels, test_labels, 5000)
+    logger.log('Theory MAP(retrieval database): {}'.format(map_val))
+    map_val = cal_map(database_hash, qB_ori, database_labels, test_labels, 5000)
+    logger.log('Ori MAP(retrieval database): {}'.format(map_val))
+
+    # # calculate P-R curve
+    # pr_arr = cal_pr(database_hash, qB_ori, database_labels, test_labels, interval=0.01)
+    # np.save(os.path.join('log', attack_model, '{}-pr_ori.npy'.format(method)), pr_arr)
+    #
+    # pr_arr = cal_pr(database_hash, qB, database_labels, test_labels, interval=0.01)
+    # np.save(os.path.join('log', attack_model, '{}-pr_adv.npy'.format(method)), pr_arr)
+    #
+    # top_n = cal_top_n(database_hash, qB_ori, database_labels, test_labels)
+    # np.save(os.path.join('log', attack_model, '{}-topn_ori.npy'.format(method)), top_n)
+    # top_n = cal_top_n(database_hash, qB, database_labels, test_labels)
+    # np.save(os.path.join('log', attack_model, '{}-topn_adv.npy'.format(method)), top_n)
 
 
 def parser_arguments():
