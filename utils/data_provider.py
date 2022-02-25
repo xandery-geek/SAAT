@@ -80,4 +80,4 @@ def get_data_loader(data_dir, dataset_name, split, batch_size, shuffle=False, nu
 
 def get_data_label(data_dir, dataset_name, split):
     _, label_name = get_dataset_filename(split)
-    return np.loadtxt(os.path.join(data_dir, dataset_name, label_name), dtype=int)
+    return np.loadtxt(os.path.join(data_dir, dataset_name, label_name), dtype=np.int64)

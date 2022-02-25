@@ -137,11 +137,9 @@ def tadh(args, epsilon=8/255., lr=1e-4):
     test_loader, num_test = get_data_loader(args.data_dir, args.dataset, 'test',
                                             args.batch_size, shuffle=False)
 
-    train_labels = get_data_label(args.data_dir, args.dataset, 'train')
     test_labels = get_data_label(args.data_dir, args.dataset, 'test')
     database_labels = get_data_label(args.data_dir, args.dataset, 'database')
 
-    train_labels = torch.from_numpy(train_labels).float()
     database_labels = torch.from_numpy(database_labels).float()
     target_labels = database_labels.unique(dim=0)
 
@@ -165,8 +163,9 @@ def tadh(args, epsilon=8/255., lr=1e-4):
         circle_loss = CircleLoss(m=0, gamma=1)
 
         # hash codes of training set
-        B, _ = generate_code(model, train_loader)
-        B = torch.from_numpy(B).cuda()
+        train_hash, train_labels = generate_code(model, train_loader)
+        train_hash = torch.from_numpy(train_hash).cuda()
+        train_labels = torch.from_numpy(train_labels).cuda()
 
         for epoch in range(epochs):
             for i in range(steps):
@@ -175,8 +174,7 @@ def tadh(args, epsilon=8/255., lr=1e-4):
 
                 optimizer_l.zero_grad()
                 target_hash_l = pnet(batch_target_label)
-
-                sp, sn = similarity(target_hash_l, B, batch_target_label, train_labels.cuda(), args.bit)
+                sp, sn = similarity(target_hash_l, train_hash, batch_target_label, train_labels, args.bit)
                 logloss = circle_loss(sp, sn) / args.batch_size
                 regterm = (torch.sign(target_hash_l) - target_hash_l).pow(2).sum() / (1e4 * args.batch_size)
                 loss = logloss + regterm
@@ -184,11 +182,8 @@ def tadh(args, epsilon=8/255., lr=1e-4):
                 loss.backward()
                 optimizer_l.step()
                 if i % 30 == 0:
-                    print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, logloss:{:.5f}, regterm: {:.5f}'.format(epoch, i,
-                                                                                                          scheduler.get_last_lr()[
-                                                                                                              0],
-                                                                                                          logloss,
-                                                                                                          regterm))
+                    print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, logloss:{:.5f}, regterm: {:.5f}'.
+                          format(epoch, i, scheduler.get_last_lr()[0], logloss, regterm))
                 scheduler.step()
 
         torch.save(pnet, pnet_path)
@@ -198,6 +193,7 @@ def tadh(args, epsilon=8/255., lr=1e-4):
     if os.path.exists(target_label_path):
         targeted_labels = np.loadtxt(target_label_path, dtype=np.int)
     else:
+        print("Generating target labels")
         targeted_labels = np.zeros([num_test, num_classes])
         for data in test_loader:
             _, label, index = data
@@ -206,6 +202,7 @@ def tadh(args, epsilon=8/255., lr=1e-4):
         np.savetxt(target_label_path, targeted_labels, fmt="%d")
 
     qB = np.zeros([num_test, args.bit], dtype=np.float32)
+    qB_ori = np.zeros([num_test, args.bit], dtype=np.float32)
     query_prototype_codes = np.zeros((num_test, args.bit), dtype=np.float)
     perceptibility = 0
     for it, data in enumerate(test_loader):
@@ -228,6 +225,7 @@ def tadh(args, epsilon=8/255., lr=1e-4):
         query_code = model(query_adv)
         query_code = torch.sign(query_code)
         qB[index.numpy(), :] = query_code.cpu().data.numpy()
+        qB_ori[index.numpy(), :] = model(queries).sign().cpu().data.numpy()
 
         # sample_image(queries, '{}_benign'.format(it))
         # sample_image(query_adv, '{}_adv'.format(it))
@@ -238,9 +236,13 @@ def tadh(args, epsilon=8/255., lr=1e-4):
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('perceptibility: {:.7f}'.format(torch.sqrt(perceptibility / num_test)))
 
+    map_ = cal_map(database_hash, qB_ori, database_labels.numpy(), test_labels, 5000)
+    logger.log('Ori MAP(retrieval database): {}'.format(map_))
     map_ = cal_map(database_hash, qB, database_labels.numpy(), test_labels, 5000)
     logger.log('TADH MAP(retrieval database): {}'.format(map_))
     p_map = cal_map(database_hash, query_prototype_codes, database_labels.numpy(), test_labels, 5000)
     logger.log('Theory MAP(retrieval database): {}'.format(p_map))
     t_map = cal_map(database_hash, qB, database_labels.numpy(), targeted_labels, 5000)
     logger.log('TADH t-MAP(retrieval database): {}'.format(t_map))
+    t_map = cal_map(database_hash, query_prototype_codes, database_labels.numpy(), targeted_labels, 5000)
+    logger.log('Theory t-MAP(retrieval database): {}'.format(t_map))
