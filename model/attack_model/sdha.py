@@ -119,6 +119,9 @@ def sdha(args):
 
     database_code, database_labels = get_database_code(model, database_loader, attack_model)
 
+    # save code
+    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), test_code_hat)
+
     # calculate map
     ori_map = cal_map(database_code, test_code, database_labels, test_labels, 5000)
     adv_map = cal_map(database_code, test_code_hat, database_labels, test_labels, 5000)

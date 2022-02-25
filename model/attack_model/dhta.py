@@ -56,7 +56,7 @@ def sample_image(image, name, sample_dir='sample/dhta'):
     image.save(os.path.join(sample_dir, name + '.png'), quality=100)
 
 
-def dhta(args, num_target=9, epsilon=8 / 255.):
+def dhta(args, num_target=9, epsilon=0.032):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     method = 'P2P' if num_target == 1 else 'DHTA'
 
@@ -145,10 +145,8 @@ def dhta(args, num_target=9, epsilon=8 / 255.):
         query_code = generate_hash(model, query_adv, batch_size_, args.bit)
         qB[u_ind, :] = query_code
 
-    # test_code_path = 'log/test_code_{}_{}_{}.txt'.format(args.dataset, method, args.bit)
-    # qB = np.loadtxt(test_code_path, dtype=np.float)
-    # np.savetxt(test_code_path, qB, fmt="%d")
-    # print('perceptibility: {:.7f}'.format(torch.sqrt(perceptibility/num_test)))
+    # save code
+    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), qB)
 
     a_map = cal_map(database_hash, query_anchor_codes, database_labels_int, target_labels, 5000)
     a_t_map = cal_map(database_hash, query_anchor_codes, database_labels_int, test_labels_int, 5000)

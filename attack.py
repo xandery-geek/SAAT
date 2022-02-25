@@ -3,6 +3,7 @@ import argparse
 from model.attack_model.hag import hag
 from model.attack_model.sdha import sdha
 from model.attack_model.dhta import dhta
+from model.attack_model.tadh import tadh
 from central_attack import central_attack
 
 
@@ -36,11 +37,15 @@ if __name__ == '__main__':
     if args.method == 'hag':
         hag(args)
     elif args.method == 'sdha':
+        args.iteration = 1500
         sdha(args)
     elif args.method == 'dhta':
         dhta(args)
     elif args.method == 'p2p':
         dhta(args, num_target=1)
+    elif args.method == 'tadh':
+        args.iteration = 100
+        tadh(args)
     elif args.method == 'central':
         args.iteration = 100
         central_attack(args)

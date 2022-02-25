@@ -64,7 +64,7 @@ def sample_image(image, name, sample_dir='sample/attack'):
     image.save(os.path.join(sample_dir, name + '.png'), quality=100)
 
 
-def central_attack(args, epsilon=0.039):
+def central_attack(args, epsilon=8/255.):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     method = 'CentralAttack'
     # load model
@@ -75,7 +75,7 @@ def central_attack(args, epsilon=0.039):
     # load dataset
     database_loader, num_database = get_data_loader(args.data_dir, args.dataset, 'database',
                                                     args.batch_size, shuffle=False)
-    train_loader, num_train = get_data_loader(args.data_dir, args.dataset, 'test',
+    train_loader, num_train = get_data_loader(args.data_dir, args.dataset, 'train',
                                               args.batch_size, shuffle=True)
     test_loader, num_test = get_data_loader(args.data_dir, args.dataset, 'test',
                                             args.batch_size, shuffle=False)
