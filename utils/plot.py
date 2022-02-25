@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from collections.abc import Iterable
+
 
 color_tuple = ('#8ECFC9', '#82B0D2', '#BEB8DC', '#FA7F6F', '#FFBE7A', '#E7DAD2',
                '#999999')
@@ -7,59 +9,34 @@ color_tuple = ('#8ECFC9', '#82B0D2', '#BEB8DC', '#FA7F6F', '#FFBE7A', '#E7DAD2',
 style_tuple = ('-', '--', '-.', ':')
 
 
-def plot_pr_curve(pr_arr, label, color=None, style=None):
-    if not isinstance(pr_arr, (list, tuple)):
-        pr_arr = (pr_arr,)
-        label = (label,)
+def plot_curve(curve_arr, curve_label, color=None, style=None, curve_type='pr'):
+    if not isinstance(curve_arr, Iterable):
+        curve_arr = (curve_arr,)
+        curve_label = (curve_label,)
 
     if color is None:
-        color = np.random.choice(color_tuple, len(label))
+        color = np.random.choice(color_tuple, len(curve_label))
 
     if style is None:
-        style = np.random.choice(style_tuple, len(label))
+        style = np.random.choice(style_tuple, len(curve_label))
 
-    for i, pr in enumerate(pr_arr):
-        r = pr[:, 0]
-        p = pr[:, 1]
+    for i, curve in enumerate(curve_arr):
+        x = curve[:, 0]
+        y = curve[:, 1]
+        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=2)
 
-        plt.plot(r, p, label=label[i], c=color[i], ls=style[i], lw=2)
-
-    plt.xlabel('Recall')
-    plt.ylabel('Precision')
-    plt.legend()
-    plt.show()
-
-
-def plot_topn_curve(top_n_arr, label, color=None, style=None):
-    if not isinstance(top_n_arr, (list, tuple)):
-        top_n_arr = (top_n_arr,)
-        label = (label,)
-
-    if color is None:
-        color = np.random.choice(color_tuple, len(label))
-
-    if style is None:
-        style = np.random.choice(style_tuple, len(label))
-
-    for i, pr in enumerate(top_n_arr):
-        top_n = pr[:, 0]
-        p = pr[:, 1]
-
-        plt.plot(top_n, p, label=label[i], c=color[i], ls=style[i], lw=2)
-
-    plt.xlabel('topN')
+    x_label = 'Recall' if curve_type == 'pr' else 'topN'
+    plt.xlabel(x_label)
     plt.ylabel('Precision')
     plt.legend()
     plt.show()
 
 
 if __name__ == '__main__':
-    # arr1 = np.load('../log/CIFAR-10_DPH_AlexNet_32/HAG-pr_adv.npy')
-    # arr2 = np.load('../log/CIFAR-10_DPH_AlexNet_32/HAG-pr_ori.npy')
-    # plot_pr_curve((arr1, arr2), ('adv', 'ori'), style=('-', '--'),
-    #               color=('#8ECFC9', '#82B0D2', '#BEB8DC', '#FA7F6F'))
+    topn_arr = np.load('../log/NUS-WIDE_DPH_AlexNet_16/topn.npy')
+    topn_label = np.loadtxt('../log/NUS-WIDE_DPH_AlexNet_16/topn.txt', dtype=str)
+    plot_curve(topn_arr, topn_label, curve_type='topn')
 
-    arr1 = np.load('../log/CIFAR-10_DPH_AlexNet_32/HAG-topn_ori.npy')
-    arr2 = np.load('../log/CIFAR-10_DPH_AlexNet_32/HAG-topn_adv.npy')
-    plot_topn_curve((arr1, arr2), ('adv', 'ori'), style=('-', '--'),
-                    color=('#8ECFC9', '#82B0D2', '#BEB8DC', '#FA7F6F'))
+    # pr_arr = np.load('../log/NUS-WIDE_DPH_AlexNet_32/pr.npy')
+    # pr_label = np.loadtxt('../log/NUS-WIDE_DPH_AlexNet_32/pr.txt', dtype=str)
+    # plot_curve(pr_arr, pr_label)

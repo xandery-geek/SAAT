@@ -59,7 +59,7 @@ def cal_pr(retrieval_binary, query_binary, retrieval_label, query_label, interva
         sort_index = np.argsort(hamming_dis)
         ground_truth = ground_truth[sort_index]
         tp_num = len(np.where(ground_truth == 1)[0])
-        r_num_arr = tp_num * r_arr
+        r_num_arr = (tp_num * r_arr).astype(np.int32)
 
         tp_cum = np.cumsum(ground_truth)
         total_num_arr = np.array([np.where(tp_cum == i)[0][0] + 1 for i in r_num_arr])
