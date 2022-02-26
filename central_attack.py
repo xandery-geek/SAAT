@@ -118,7 +118,7 @@ def central_attack(args, epsilon=8/255.):
         # sample_image(query_adv, '{}_adv'.format(it))
 
     # save code
-    np.save(os.path.join('log', attack_model, 'original_code.npy'), qB_ori)
+    np.save(os.path.join('log', attack_model, 'Original_code.npy'), qB_ori)
     np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), qB)
 
     # calculate map

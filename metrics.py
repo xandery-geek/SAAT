@@ -8,7 +8,7 @@ from utils.data_provider import get_data_label
 def cal_pr_or_topn(dataset, hash_method, backbone, bit, data_dir='../data', curve_type='pr', **kwargs):
     func = cal_pr if curve_type == 'pr' else cal_top_n
 
-    method_tuple = ('original', 'HAG', 'SDHA', 'P2P', 'DHTA', 'TADH', 'CentralAttack')
+    method_tuple = ('Original', 'P2P', 'DHTA', 'TADH',  'ProsGAN', 'HAG', 'SDHA', 'CentralAttack')
     attack_model = '{}_{}_{}_{}'.format(dataset, hash_method, backbone, bit)
 
     log_path = 'log/{}'.format(attack_model)
@@ -23,10 +23,13 @@ def cal_pr_or_topn(dataset, hash_method, backbone, bit, data_dir='../data', curv
     for method in method_tuple:
         method_file = os.path.join(log_path, '{}_code.npy'.format(method))
         if os.path.exists(method_file):
+            print("method: {}".format(method))
             code = np.load(method_file)
             curve = func(database_code, code, database_labels, test_labels, **kwargs)
             curve_arr.append(curve)
             curve_label.append(method)
+        else:
+            print("{} is not existed".format(method))
     np.save(os.path.join(log_path, '{}.npy'.format(curve_type)), np.array(curve_arr))
     np.savetxt(os.path.join(log_path, '{}.txt'.format(curve_type)), np.array(curve_label), fmt='%s')
 

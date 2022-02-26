@@ -1,42 +1,65 @@
+import argparse
+
 import matplotlib.pyplot as plt
 import numpy as np
 from collections.abc import Iterable
 
 
-color_tuple = ('#8ECFC9', '#82B0D2', '#BEB8DC', '#FA7F6F', '#FFBE7A', '#E7DAD2',
-               '#999999')
+# color_tuple = ('#8ECFC9', '#82B0D2', '#BEB8DC', '#FA7F6F', '#FFBE7A', '#E7DAD2',
+#                '#999999', '#00fbff')
+
+color_tuple = ('#7f7f7f', '#af8dcd', '#2ca02c', '#e377c2',
+               '#ff7f0e', '#8c564b', '#d62728', '#1f77b4')
 
 style_tuple = ('-', '--', '-.', ':')
 
 
-def plot_curve(curve_arr, curve_label, color=None, style=None, curve_type='pr'):
+def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_type='pr'):
     if not isinstance(curve_arr, Iterable):
         curve_arr = (curve_arr,)
         curve_label = (curve_label,)
 
     if color is None:
-        color = np.random.choice(color_tuple, len(curve_label))
+        # color = np.random.choice(color_tuple, len(curve_label))
+        color = color_tuple
 
     if style is None:
-        style = np.random.choice(style_tuple, len(curve_label))
+        # style = np.random.choice(style_tuple, len(curve_label))
+        style = ['--'] * len(curve_label)
 
     for i, curve in enumerate(curve_arr):
         x = curve[:, 0]
         y = curve[:, 1]
-        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=2)
+        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=3)
 
     x_label = 'Recall' if curve_type == 'pr' else 'topN'
     plt.xlabel(x_label)
     plt.ylabel('Precision')
+    plt.title(title)
     plt.legend()
     plt.show()
 
 
-if __name__ == '__main__':
-    topn_arr = np.load('../log/NUS-WIDE_DPH_AlexNet_16/topn.npy')
-    topn_label = np.loadtxt('../log/NUS-WIDE_DPH_AlexNet_16/topn.txt', dtype=str)
-    plot_curve(topn_arr, topn_label, curve_type='topn')
+def parser_arguments():
+    parser = argparse.ArgumentParser()
+    # description of data
+    parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
+                        choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
+                        help='name of the dataset')
+    parser.add_argument('--hash_method', dest='hash_method', default='DPH',
+                        choices=['DPH', 'DPSH', 'HashNet'],
+                        help='deep hashing methods')
+    parser.add_argument('--backbone', dest='backbone', default='AlexNet',
+                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
+                        help='backbone network')
+    parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
+    parser.add_argument('--type', dest='type', type=str, default='pr', help='curve type')
+    return parser.parse_args()
 
-    # pr_arr = np.load('../log/NUS-WIDE_DPH_AlexNet_32/pr.npy')
-    # pr_label = np.loadtxt('../log/NUS-WIDE_DPH_AlexNet_32/pr.txt', dtype=str)
-    # plot_curve(pr_arr, pr_label)
+
+if __name__ == '__main__':
+    args = parser_arguments()
+    attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
+    arr = np.load('../log/{}/{}.npy'.format(attack_model, args.type))
+    label = np.loadtxt('../log/{}/{}.txt'.format(attack_model, args.type), dtype=str)
+    plot_curve(arr, label, title=args.dataset, curve_type=args.type)

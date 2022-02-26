@@ -44,7 +44,7 @@ def cal_map(retrieval_binary, query_binary, retrieval_label, query_label, top_k)
     return top_k_map / query_number  # mean of average precision of all class
 
 
-def cal_pr(retrieval_binary, query_binary, retrieval_label, query_label, interval=0.1):
+def cal_pr(retrieval_binary, query_binary, retrieval_label, query_label, interval=0.01):
     r_arr = np.array([i * interval for i in range(1, int(1/interval) + 1)])
     p_arr = np.zeros(len(r_arr))
 
