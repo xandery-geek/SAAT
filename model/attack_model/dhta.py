@@ -4,6 +4,7 @@ from utils.data_provider import *
 from utils.hamming_matching import *
 from model.attack_model.util import *
 from utils.util import Logger
+from tqdm import tqdm
 
 
 def target_adv_loss(noisy_output, target_hash):
@@ -116,12 +117,10 @@ def dhta(args, num_target=9, epsilon=0.032):
     qB = np.zeros([num_test, args.bit], dtype=np.float32)
     query_anchor_codes = np.zeros((num_test, args.bit), dtype=np.float)
     # perceptibility = 0
-    for it, data in enumerate(test_loader):
+    for it, data in enumerate(tqdm(test_loader, ncols=50)):
         queries, _, index = data
         # sample_image(queries, '{}_benign'.format(it))
 
-        n = index[-1].item() + 1
-        print(n)
         queries = queries.cuda()
         batch_size_ = index.size(0)
 

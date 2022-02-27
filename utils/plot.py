@@ -8,10 +8,12 @@ from collections.abc import Iterable
 # color_tuple = ('#8ECFC9', '#82B0D2', '#BEB8DC', '#FA7F6F', '#FFBE7A', '#E7DAD2',
 #                '#999999', '#00fbff')
 
-color_tuple = ('#7f7f7f', '#af8dcd', '#2ca02c', '#e377c2',
-               '#ff7f0e', '#8c564b', '#d62728', '#1f77b4')
+color_tuple = ('#7f7f7f', '#3b75af', '#8d69b8', '#519e3e',
+               '#d57dbf', '#ef8636', '#84584e', '#c53a32')
 
-style_tuple = ('-', '--', '-.', ':')
+style_tuple = ('-', '--', '--', '--', '--', '-', '-', '-')
+marker_tuple = ('', '*', '*', '*', '*', 'o', 'o', 'o')
+ms_tuple = (0, 8, 8, 8, 8, 5, 5, 5)
 
 
 def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_type='pr'):
@@ -25,14 +27,15 @@ def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_t
 
     if style is None:
         # style = np.random.choice(style_tuple, len(curve_label))
-        style = ['--'] * len(curve_label)
+        style = style_tuple
 
     for i, curve in enumerate(curve_arr):
         x = curve[:, 0]
         y = curve[:, 1]
-        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=3)
+        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=2)
+                 # marker=marker_tuple[i], markersize=ms_tuple[i])
 
-    x_label = 'Recall' if curve_type == 'pr' else 'topN'
+    x_label = 'Recall' if curve_type == 'pr' else 'Number of top ranked samples'
     plt.xlabel(x_label)
     plt.ylabel('Precision')
     plt.title(title)

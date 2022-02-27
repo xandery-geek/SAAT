@@ -5,6 +5,7 @@ from utils.data_provider import *
 from utils.hamming_matching import *
 from model.attack_model.util import load_model, get_database_code, generate_code, get_alpha
 from utils.util import Logger
+from tqdm import tqdm
 
 
 def adv_loss(noisy_output, target_hash):
@@ -16,15 +17,17 @@ def adv_loss(noisy_output, target_hash):
     return loss
 
 
-def hash_adv(model, query, target_hash, epsilon, step=1, iteration=2000, randomize=False):
+def hash_adv(model, query, target_hash, epsilon, step=1.0, iteration=100, randomize=False):
     delta = torch.zeros_like(query).cuda()
     if randomize:
         delta.uniform_(-epsilon, epsilon)
         delta.data = (query.data + delta.data).clamp(0, 1) - query.data
     delta.requires_grad = True
 
+    # loss_list = []
     for i in range(iteration):
-        alpha = get_alpha(i, iteration)
+        # alpha = get_alpha(i, iteration)
+        alpha = 0.1
         noisy_output = model(query + delta, alpha)
         loss = adv_loss(noisy_output, target_hash.detach())
         loss.backward()
@@ -36,10 +39,9 @@ def hash_adv(model, query, target_hash, epsilon, step=1, iteration=2000, randomi
         delta.data = (query.data + delta.data).clamp(0, 1) - query.data
         delta.grad.zero_()
 
-        # if i % 10 == 0:
-        #     print('it:{}, loss:{}'.format(i, loss))
-    # print(torch.min(255*delta.data))
-    # print(torch.max(255*delta.data))
+    #     if (i + 1) % (iteration // 10) == 0:
+    #         loss_list.append(round(loss.item(), 4))
+    # print("loss :{}".format(loss_list))
     return query + delta.detach()
 
 
@@ -94,20 +96,16 @@ def central_attack(args, epsilon=8/255.):
     qB_ori = np.zeros([num_test, args.bit], dtype=np.float32)
     cB = np.zeros([num_test, args.bit], dtype=np.float32)
     perceptibility = 0
-    for it, data in enumerate(test_loader):
+    for it, data in enumerate(tqdm(test_loader, ncols=50)):
         queries, labels, index = data
         queries = queries.cuda()
         labels = labels.cuda()
         batch_size_ = index.size(0)
 
-        n = index[-1].item() + 1
-        print(n)
-
         center_codes = hash_center_code(labels, train_B, train_L, args.bit)
         query_adv = hash_adv(model, queries, center_codes, epsilon, iteration=args.iteration)
 
         perceptibility += F.mse_loss(queries, query_adv).data * batch_size_
-
         query_code = model(query_adv)
         query_code = torch.sign(query_code)
         qB[index.numpy(), :] = query_code.cpu().data.numpy()
@@ -157,7 +155,7 @@ def parser_arguments():
                         choices=['DPH', 'DPSH', 'HashNet'],
                         help='deep hashing methods')
     parser.add_argument('--backbone', dest='backbone', default='AlexNet',
-                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
+                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50', 'ResNet101'],
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')

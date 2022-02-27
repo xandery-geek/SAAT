@@ -120,9 +120,9 @@ def sample_image(image, name, sample_dir='sample/attack'):
     image.save(os.path.join(sample_dir, name + '.png'), quality=100)
 
 
-def tadh(args, epsilon=8/255., lr=1e-4):
+def tha(args, epsilon=8 / 255., lr=1e-4):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
-    method = 'TADH'
+    method = 'THA'
 
     # load model
     attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
@@ -239,10 +239,10 @@ def tadh(args, epsilon=8/255., lr=1e-4):
     # map_ = cal_map(database_hash, qB_ori, database_labels.numpy(), test_labels, 5000)
     # logger.log('Ori MAP(retrieval database): {}'.format(map_))
     map_ = cal_map(database_hash, qB, database_labels.numpy(), test_labels, 5000)
-    logger.log('TADH MAP(retrieval database): {}'.format(map_))
+    logger.log('THA MAP(retrieval database): {}'.format(map_))
     # p_map = cal_map(database_hash, query_prototype_codes, database_labels.numpy(), test_labels, 5000)
     # logger.log('Theory MAP(retrieval database): {}'.format(p_map))
     # t_map = cal_map(database_hash, qB, database_labels.numpy(), targeted_labels, 5000)
-    # logger.log('TADH t-MAP(retrieval database): {}'.format(t_map))
+    # logger.log('THA t-MAP(retrieval database): {}'.format(t_map))
     # t_map = cal_map(database_hash, query_prototype_codes, database_labels.numpy(), targeted_labels, 5000)
     # logger.log('Theory t-MAP(retrieval database): {}'.format(t_map))
