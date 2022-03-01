@@ -2,7 +2,7 @@ import collections
 import pandas as pd
 from utils.data_provider import *
 from utils.hamming_matching import *
-from model.attack_model.util import *
+from model.util import *
 from utils.util import Logger
 from tqdm import tqdm
 

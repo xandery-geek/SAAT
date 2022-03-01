@@ -200,12 +200,12 @@ def parser_arguments():
     parser.add_argument('--test_label', dest='test_label', default='test_label.txt',
                         help='the label list of test images')
     # model
-    parser.add_argument('--hashing_method', dest='method', default='DPH', choices=['DPH', 'DPSH', 'HashNet'],
+    parser.add_argument('--hash_method', dest='method', default='DPH', choices=['DPH', 'DPSH', 'HashNet'],
                         help='deep hashing methods')
     parser.add_argument('--backbone', dest='backbone', default='AlexNet',
                         choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50', 'ResNet101'],
                         help='backbone network')
-    parser.add_argument('--code_length', dest='bit', type=int, default=16, help='length of the hashing code')
+    parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
 
     # training or test

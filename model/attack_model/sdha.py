@@ -3,7 +3,7 @@
 import torch.nn.functional
 from tqdm import tqdm
 from utils.hamming_matching import *
-from model.attack_model.util import *
+from model.util import *
 from utils.data_provider import get_data_loader, get_data_label
 from utils.util import Logger
 

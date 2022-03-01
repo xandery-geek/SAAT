@@ -3,7 +3,7 @@ import argparse
 import torch.nn.functional as F
 from utils.data_provider import *
 from utils.hamming_matching import *
-from model.attack_model.util import load_model, get_database_code, generate_code, get_alpha
+from model.util import load_model, get_database_code, generate_code, get_alpha
 from utils.util import Logger
 from tqdm import tqdm
 
@@ -26,8 +26,7 @@ def hash_adv(model, query, target_hash, epsilon, step=1.0, iteration=100, random
 
     # loss_list = []
     for i in range(iteration):
-        # alpha = get_alpha(i, iteration)
-        alpha = 0.1
+        alpha = get_alpha(i, iteration)
         noisy_output = model(query + delta, alpha)
         loss = adv_loss(noisy_output, target_hash.detach())
         loss.backward()

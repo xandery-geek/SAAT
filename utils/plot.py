@@ -8,8 +8,8 @@ from collections.abc import Iterable
 # color_tuple = ('#8ECFC9', '#82B0D2', '#BEB8DC', '#FA7F6F', '#FFBE7A', '#E7DAD2',
 #                '#999999', '#00fbff')
 
-color_tuple = ('#7f7f7f', '#3b75af', '#8d69b8', '#519e3e',
-               '#d57dbf', '#ef8636', '#84584e', '#c53a32')
+color_tuple = ('#7f7f7f', '#8d69b8', '#d57dbf', '#ef8636',
+               '#84584e', '#519e3e', '#c53a32', '#3b75af')
 
 style_tuple = ('-', '--', '--', '--', '--', '-', '-', '-')
 marker_tuple = ('', '*', '*', '*', '*', 'o', 'o', 'o')
@@ -39,7 +39,7 @@ def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_t
     plt.xlabel(x_label)
     plt.ylabel('Precision')
     plt.title(title)
-    plt.legend()
+    plt.legend(loc=(0.7, 0.4))
     plt.show()
 
 
