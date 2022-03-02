@@ -1,6 +1,8 @@
+import os
+import torch
 import argparse
 from torch.autograd import Variable
-from utils.data_provider import *
+from utils.data_provider import get_data_loader, get_classes_num
 from model.util import load_model, generate_code
 from utils.util import check_dir
 
@@ -37,11 +39,7 @@ def pairwise_loss_updated(u, U, y, Y):
 
 
 def adv_loss(noisy_output, target_hash):
-    # loss = torch.mean(noisy_output * target_hash)
-    sim = noisy_output * target_hash
-    w = (sim > -0.5).int()
-    sim = w * (sim + 2) * sim
-    loss = torch.mean(sim)
+    loss = torch.mean(noisy_output * target_hash)
     return loss
 
 
@@ -91,6 +89,17 @@ def mixup(x, x_adv, gamma=2):
     return x_adv
 
 
+def generate_code_label(model, data_loader, num_data, bit, num_class):
+    B = torch.zeros([num_data, bit]).cuda()
+    L = torch.zeros(num_data, num_class).cuda()
+    for iter, data in enumerate(data_loader, 0):
+        data_input, data_label, data_ind = data
+        output = model(data_input.cuda())
+        B[data_ind, :] = torch.sign(output.data)
+        L[data_ind, :] = data_label.cuda()
+    return B, L
+
+
 def parser_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
@@ -121,9 +130,10 @@ def central_adv_train(args, epsilon=8 / 255.0, epochs=10, iteration=7):
     model = load_model(model_path)
 
     print("Generating train code and label")
-    train_B, train_L = generate_code(model, train_loader)
-    train_B, train_L = torch.from_numpy(train_B), torch.from_numpy(train_L)
-    train_B, train_L = train_B.cuda(), train_L.cuda()
+    # train_B, train_L = generate_code(model, train_loader)
+    # train_B, train_L = torch.from_numpy(train_B), torch.from_numpy(train_L)
+    # train_B, train_L = train_B.cuda(), train_L.cuda()
+    train_B, train_L = generate_code_label(model, train_loader, num_train, args.bit, get_classes_num(args.dataset))
 
     U_ben = torch.zeros(num_train, args.bit).cuda()
     U_ben.data = train_B.data
@@ -190,8 +200,8 @@ def central_adv_train(args, epsilon=8 / 255.0, epochs=10, iteration=7):
             epoch_loss += loss.item()
 
             if it % 50 == 0:
-                print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, loss: {:.5f}'.format(epoch, it, scheduler.get_last_lr()[0],
-                                                                                   loss))
+                print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, loss: {:.5f}'.format(
+                        epoch, it, scheduler.get_last_lr()[0], loss))
 
         print('Epoch: %3d/%3d\tTrain_loss: %3.5f \n' % (epoch, epochs, epoch_loss / len(train_loader)))
 

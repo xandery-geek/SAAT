@@ -4,16 +4,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 from collections.abc import Iterable
 
-
 # color_tuple = ('#8ECFC9', '#82B0D2', '#BEB8DC', '#FA7F6F', '#FFBE7A', '#E7DAD2',
 #                '#999999', '#00fbff')
 
-color_tuple = ('#7f7f7f', '#8d69b8', '#d57dbf', '#ef8636',
-               '#84584e', '#519e3e', '#c53a32', '#3b75af')
+color_tuple = ('#d8383a', '#8d69b8', '#d57dbf', '#FA7F6F',
+               '#7f7f7f', '#519e3e', '#ef8636', '#3b75af')
 
-style_tuple = ('-', '--', '--', '--', '--', '-', '-', '-')
-marker_tuple = ('', '*', '*', '*', '*', 'o', 'o', 'o')
-ms_tuple = (0, 8, 8, 8, 8, 5, 5, 5)
+# color_tuple = ('#8ECFC9', '#FFBE7A', '#FA7F6F', '#82B0D2',
+#                '#BEB8DC', '#E7DAD2', '#999999', '#96C37D')
+
+style_tuple = ('-', '-', '-', '-', '-', '-', '-', '-')
+marker_tuple = ('o', 'o', 'o', 'o', 'o', 'o', 'o', 'o')
+ms_tuple = (4, 4, 4, 4, 4, 4, 4, 4)
 
 
 def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_type='pr'):
@@ -32,14 +34,15 @@ def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_t
     for i, curve in enumerate(curve_arr):
         x = curve[:, 0]
         y = curve[:, 1]
-        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=2)
-                 # marker=marker_tuple[i], markersize=ms_tuple[i])
+        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=1.5
+                 , marker=marker_tuple[i], markersize=ms_tuple[i])
 
     x_label = 'Recall' if curve_type == 'pr' else 'Number of top ranked samples'
+    loc = (0.02, 0.4) if curve_type == 'pr' else (0.7, 0.4)
     plt.xlabel(x_label)
     plt.ylabel('Precision')
     plt.title(title)
-    plt.legend(loc=(0.7, 0.4))
+    plt.legend(loc=loc)
     plt.show()
 
 

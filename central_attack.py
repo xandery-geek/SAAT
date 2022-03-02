@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from utils.data_provider import *
 from utils.hamming_matching import *
 from model.util import load_model, get_database_code, generate_code, get_alpha
-from utils.util import Logger, str2bool
+from utils.util import Logger, str2bool, retrieve_images
 from tqdm import tqdm
 
 
@@ -96,6 +96,7 @@ def central_attack(args, epsilon=8/255.):
     qB_ori = np.zeros([num_test, args.bit], dtype=np.float32)
     cB = np.zeros([num_test, args.bit], dtype=np.float32)
     perceptibility = 0
+
     for it, data in enumerate(tqdm(test_loader, ncols=50)):
         queries, labels, index = data
         queries = queries.cuda()
@@ -106,14 +107,25 @@ def central_attack(args, epsilon=8/255.):
         query_adv = hash_adv(model, queries, center_codes, epsilon, iteration=args.iteration)
 
         perceptibility += F.mse_loss(queries, query_adv).data * batch_size_
-        query_code = model(query_adv)
-        query_code = torch.sign(query_code)
+        query_code = model(query_adv).sign()
+        query_code_ori = model(queries).sign()
         qB[index.numpy(), :] = query_code.cpu().data.numpy()
-        qB_ori[index.numpy(), :] = model(queries).sign().cpu().data.numpy()
+        qB_ori[index.numpy(), :] = query_code_ori.cpu().data.numpy()
         cB[index.numpy(), :] = center_codes.cpu().data.numpy()
 
-        # sample_image(queries, '{}_benign'.format(it))
-        # sample_image(query_adv, '{}_adv'.format(it))
+        # if it == 0:
+        #     print("Retrieve images")
+        #     # retrieve by original queries
+        #     images_arr, labels_arr = retrieve_images(queries.numpy(), labels.numpy(), query_code_ori.data.cpu(),
+        #                                              database_hash, 10, args.data_dir, args.dataset)
+        #     np.save(os.path.join('log', attack_model, 'ori_retrieve_images_{}.npy'.format(it)), images_arr)
+        #     np.save(os.path.join('log', attack_model, 'ori_retrieve_labels_{}.npy'.format(it)), labels_arr)
+        #
+        #     images_arr, labels_arr = retrieve_images(queries.numpy(), labels.numpy(), query_code.data.cpu(),
+        #                                              database_hash, 10, args.data_dir, args.dataset)
+        #     np.save(os.path.join('log', attack_model, 'adv_retrieve_images_{}.npy'.format(it)), images_arr)
+        #     np.save(os.path.join('log', attack_model, 'adv_retrieve_labels_{}.npy'.format(it)), labels_arr)
+
 
     # save code
     np.save(os.path.join('log', attack_model, 'Original_code.npy'), qB_ori)
