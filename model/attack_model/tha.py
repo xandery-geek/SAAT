@@ -126,6 +126,7 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
 
     # load model
     attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
+    attack_model = attack_model if not args.adv else 'cat_{}'.format(attack_model)
     model_path = 'checkpoint/{}.pth'.format(attack_model)
     model = load_model(model_path)
 
@@ -145,8 +146,11 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
 
     database_hash, _ = get_database_code(model, database_loader, attack_model)
 
-    pnet_path = 'checkpoint/PrototypeNet_{}_{}_{}_{}.pth'.format(args.dataset, args.hash_method, args.backbone,
-                                                                 args.bit)
+    if not args.adv:
+        pnet_path = 'checkpoint/PrototypeNet_{}.pth'.format(attack_model)
+    else:
+        pnet_path = 'checkpoint/cat_PrototypeNet_{}.pth'.format(attack_model)
+
     if os.path.exists(pnet_path):
         pnet = load_model(pnet_path)
     else:

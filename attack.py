@@ -5,6 +5,7 @@ from model.attack_model.sdha import sdha
 from model.attack_model.dhta import dhta
 from model.attack_model.tha import tha
 from central_attack import central_attack
+from utils.util import str2bool
 
 
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -27,6 +28,8 @@ def parser_arguments():
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
     parser.add_argument('--iteration', dest='iteration', type=int, default=2000, help='number of images in one batch')
+    parser.add_argument('--adv', dest='adv', type=str2bool, default='False',
+                        help='load model through adversarial training')
     return parser.parse_args()
 
 

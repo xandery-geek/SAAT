@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from utils.data_provider import *
 from utils.hamming_matching import *
 from model.util import load_model, get_database_code, generate_code, get_alpha
-from utils.util import Logger
+from utils.util import Logger, str2bool
 from tqdm import tqdm
 
 
@@ -70,6 +70,7 @@ def central_attack(args, epsilon=8/255.):
     method = 'CentralAttack'
     # load model
     attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
+    attack_model = attack_model if not args.adv else 'cat_{}'.format(attack_model)
     model_path = 'checkpoint/{}.pth'.format(attack_model)
     model = load_model(model_path)
 
@@ -159,6 +160,8 @@ def parser_arguments():
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
     parser.add_argument('--iteration', dest='iteration', type=int, default=100, help='number of images in one batch')
+    parser.add_argument('--adv', dest='adv', type=str2bool, default='False',
+                        help='load model through adversarial training')
     return parser.parse_args()
 
 

@@ -36,6 +36,11 @@ def get_batch(data_loader, batch):
     return it.next()
 
 
+def check_dir(dir_path):
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+
+
 def retrieve_images(query_images, query_labels, query_codes, database_codes, top, data_dir, dataset):
     # calculate top index
     retrieve_indices = []

@@ -81,6 +81,7 @@ def hag(args):
     method = 'HAG'
     # load model
     attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
+    attack_model = attack_model if not args.adv else 'cat_{}'.format(attack_model)
     model_path = 'checkpoint/{}.pth'.format(attack_model)
     model = load_model(model_path)
 

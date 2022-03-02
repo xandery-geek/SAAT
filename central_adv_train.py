@@ -2,6 +2,7 @@ import argparse
 from torch.autograd import Variable
 from utils.data_provider import *
 from model.util import load_model, generate_code
+from utils.util import check_dir
 
 
 def CalcSim(batch_label, train_label):
@@ -92,7 +93,6 @@ def mixup(x, x_adv, gamma=2):
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--method', dest='method', default='hag', help='name of attack method')
     parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
                         choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
                         help='name of the dataset')
@@ -118,9 +118,9 @@ def central_adv_train(args, epsilon=8 / 255.0, epochs=10, iteration=7):
 
     attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
     model_path = 'checkpoint/{}.pth'.format(attack_model)
-    robust_model_path = 'checkpoint/cat_{}.pth'.format(attack_model)
     model = load_model(model_path)
 
+    print("Generating train code and label")
     train_B, train_L = generate_code(model, train_loader)
     train_B, train_L = torch.from_numpy(train_B), torch.from_numpy(train_L)
     train_B, train_L = train_B.cuda(), train_L.cuda()
@@ -174,7 +174,7 @@ def central_adv_train(args, epsilon=8 / 255.0, epochs=10, iteration=7):
                 Bbatch = torch.sign(output_ben.data)
                 quan = torch.mean((output_ben - Bbatch)**2)
                 loss_hash_ben += 1e-4*quan
-            elif args.hash_method == 'DPSH':
+            elif args.hash_method == 'HashNet':
                 loss_hash_ben = pairwise_loss_updated(output_ben, U_ben, y, train_L)
             else:
                 raise NotImplementedError()
@@ -194,6 +194,9 @@ def central_adv_train(args, epsilon=8 / 255.0, epochs=10, iteration=7):
                                                                                    loss))
 
         print('Epoch: %3d/%3d\tTrain_loss: %3.5f \n' % (epoch, epochs, epoch_loss / len(train_loader)))
+
+    check_dir('log/cat_{}'.format(attack_model))
+    robust_model_path = 'checkpoint/cat_{}.pth'.format(attack_model)
     torch.save(model, robust_model_path)
 
 
