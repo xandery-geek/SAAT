@@ -4,14 +4,10 @@ from matplotlib.pyplot import MultipleLocator
 import numpy as np
 from collections.abc import Iterable
 
-color_tuple = ('#d8383a', '#8d69b8', '#7f7f7f', '#84584e',
-               '#519e3e', '#d57dbf', '#ef8636', '#3b75af')
 
 color_tuple = ('#7f7f7f', '#d8383a', '#8d69b8', '#519e3e',
                '#84584e', '#d57dbf', '#ef8636', '#3b75af')
 
-# color_tuple = ('#8ECFC9', '#FFBE7A', '#FA7F6F', '#82B0D2',
-#                '#BEB8DC', '#E7DAD2', '#999999', '#96C37D')
 
 style_tuple = ('-', '-', '-', '-', '-', '-', '-', '-')
 marker_tuple = ('s', '^', '^', '^', '^', '*', '*', 'h')
