@@ -1,21 +1,21 @@
 import argparse
-
 import matplotlib.pyplot as plt
+from matplotlib.pyplot import MultipleLocator
 import numpy as np
 from collections.abc import Iterable
 
-# color_tuple = ('#8ECFC9', '#82B0D2', '#BEB8DC', '#FA7F6F', '#FFBE7A', '#E7DAD2',
-#                '#999999', '#00fbff')
+color_tuple = ('#d8383a', '#8d69b8', '#7f7f7f', '#84584e',
+               '#519e3e', '#d57dbf', '#ef8636', '#3b75af')
 
-color_tuple = ('#d8383a', '#8d69b8', '#d57dbf', '#FA7F6F',
-               '#7f7f7f', '#519e3e', '#ef8636', '#3b75af')
+color_tuple = ('#7f7f7f', '#d8383a', '#8d69b8', '#519e3e',
+               '#84584e', '#d57dbf', '#ef8636', '#3b75af')
 
 # color_tuple = ('#8ECFC9', '#FFBE7A', '#FA7F6F', '#82B0D2',
 #                '#BEB8DC', '#E7DAD2', '#999999', '#96C37D')
 
 style_tuple = ('-', '-', '-', '-', '-', '-', '-', '-')
-marker_tuple = ('o', 'o', 'o', 'o', 'o', 'o', 'o', 'o')
-ms_tuple = (4, 4, 4, 4, 4, 4, 4, 4)
+marker_tuple = ('s', '^', '^', '^', '^', '*', '*', 'h')
+ms_tuple = (6, 6, 6, 6, 6, 8, 8, 6)
 
 
 def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_type='pr'):
@@ -31,19 +31,29 @@ def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_t
         # style = np.random.choice(style_tuple, len(curve_label))
         style = style_tuple
 
+    fig, ax = plt.subplots()
+    plt.figure(1)
+
     for i, curve in enumerate(curve_arr):
         x = curve[:, 0]
         y = curve[:, 1]
         plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=1.5
                  , marker=marker_tuple[i], markersize=ms_tuple[i])
 
-    x_label = 'Recall' if curve_type == 'pr' else 'Number of top ranked samples'
-    loc = (0.02, 0.4) if curve_type == 'pr' else (0.7, 0.4)
-    plt.xlabel(x_label)
+    x_major_locator = MultipleLocator(0.1 if curve_type == 'pr' else 100)
+    y_major_locator = MultipleLocator(0.1)
+    loc = (0.02, 0.43) if curve_type == 'pr' else (0.02, 0.37)
+    ax.xaxis.set_major_locator(x_major_locator)
+    ax.yaxis.set_major_locator(y_major_locator)
+    plt.xlabel('Recall' if curve_type == 'pr' else 'Number of top ranked samples')
     plt.ylabel('Precision')
     plt.title(title)
-    plt.legend(loc=loc)
-    plt.show()
+    plt.legend(loc=loc, framealpha=0.7)
+    plt.grid(linestyle='--')
+    fig.subplots_adjust(left=0.09, right=0.99)
+    fig.set_size_inches(6, 5.5)
+    plt.savefig('../documents/{}-{}.svg'.format(title, curve_type), dpi=600, format='svg', transparent=True)
+    # plt.show()
 
 
 def parser_arguments():

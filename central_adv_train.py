@@ -3,7 +3,7 @@ import torch
 import argparse
 from torch.autograd import Variable
 from utils.data_provider import get_data_loader, get_classes_num
-from model.util import load_model, generate_code
+from model.util import load_model
 from utils.util import check_dir
 
 

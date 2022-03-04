@@ -185,7 +185,7 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
 
                 loss.backward()
                 optimizer_l.step()
-                if i % 30 == 0:
+                if (i+1) % 300 == 0:
                     print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, logloss:{:.5f}, regterm: {:.5f}'.
                           format(epoch, i, scheduler.get_last_lr()[0], logloss, regterm))
                 scheduler.step()

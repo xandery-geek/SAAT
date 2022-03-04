@@ -101,8 +101,8 @@ def hag(args):
         test_code = h.numpy() if test_code is None else np.concatenate((test_code, h.numpy()), axis=0)
         test_code_hat = h_hat.numpy() if test_code_hat is None else np.concatenate((test_code_hat, h_hat.numpy()),
                                                                                    axis=0)
-        if i == 0:
-            save_images(x[:4].cpu().numpy(), x_hat[:4].numpy(), attack_model, method=method, batch=i)
+        # if i == 0:
+        #     save_images(x[:4].cpu().numpy(), x_hat[:4].numpy(), attack_model, method=method, batch=i)
 
     database_code, database_labels = get_database_code(model, database_loader, attack_model)
 
