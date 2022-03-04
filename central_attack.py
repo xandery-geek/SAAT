@@ -3,7 +3,7 @@ import argparse
 import torch.nn.functional as F
 from utils.data_provider import *
 from utils.hamming_matching import *
-from model.util import load_model, get_database_code, generate_code, get_alpha
+from model.util import load_model, get_database_code, generate_code, get_alpha, get_attack_model_name
 from utils.util import Logger, str2bool, retrieve_images
 from tqdm import tqdm
 
@@ -69,12 +69,7 @@ def central_attack(args, epsilon=8/255.):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     method = 'CentralAttack'
     # load model
-    attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
-    if args.atrdh:
-        attack_model = 'atrdh_{}'.format(attack_model)
-    else:
-        attack_model = attack_model if not args.adv else 'cat_{}'.format(attack_model)
-
+    attack_model = get_attack_model_name(args)
     model_path = 'checkpoint/{}.pth'.format(attack_model)
     model = load_model(model_path)
 
@@ -120,12 +115,14 @@ def central_attack(args, epsilon=8/255.):
         # if it == 0:
         #     print("Retrieve images")
         #     # retrieve by original queries
-        #     images_arr, labels_arr = retrieve_images(queries.numpy(), labels.numpy(), query_code_ori.data.cpu(),
+        #     images_arr, labels_arr = retrieve_images(queries.cpu().numpy(), labels.cpu().numpy(),
+        #                                              query_code_ori.data.cpu().numpy(),
         #                                              database_hash, 10, args.data_dir, args.dataset)
         #     np.save(os.path.join('log', attack_model, 'ori_retrieve_images_{}.npy'.format(it)), images_arr)
         #     np.save(os.path.join('log', attack_model, 'ori_retrieve_labels_{}.npy'.format(it)), labels_arr)
         #
-        #     images_arr, labels_arr = retrieve_images(queries.numpy(), labels.numpy(), query_code.data.cpu(),
+        #     images_arr, labels_arr = retrieve_images(query_adv.cpu().numpy(), labels.cpu().numpy(),
+        #                                              query_code.data.cpu().numpy(),
         #                                              database_hash, 10, args.data_dir, args.dataset)
         #     np.save(os.path.join('log', attack_model, 'adv_retrieve_images_{}.npy'.format(it)), images_arr)
         #     np.save(os.path.join('log', attack_model, 'adv_retrieve_labels_{}.npy'.format(it)), labels_arr)
@@ -145,18 +142,6 @@ def central_attack(args, epsilon=8/255.):
     logger.log('Theory MAP(retrieval database): {}'.format(map_val))
     map_val = cal_map(database_hash, qB_ori, database_labels, test_labels, 5000)
     logger.log('Ori MAP(retrieval database): {}'.format(map_val))
-
-    # # calculate P-R curve
-    # pr_arr = cal_pr(database_hash, qB_ori, database_labels, test_labels, interval=0.01)
-    # np.save(os.path.join('log', attack_model, '{}-pr_ori.npy'.format(method)), pr_arr)
-    #
-    # pr_arr = cal_pr(database_hash, qB, database_labels, test_labels, interval=0.01)
-    # np.save(os.path.join('log', attack_model, '{}-pr_adv.npy'.format(method)), pr_arr)
-    #
-    # top_n = cal_top_n(database_hash, qB_ori, database_labels, test_labels)
-    # np.save(os.path.join('log', attack_model, '{}-topn_ori.npy'.format(method)), top_n)
-    # top_n = cal_top_n(database_hash, qB, database_labels, test_labels)
-    # np.save(os.path.join('log', attack_model, '{}-topn_adv.npy'.format(method)), top_n)
 
 
 def parser_arguments():

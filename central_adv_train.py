@@ -115,12 +115,16 @@ def parser_arguments():
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
-    parser.add_argument('--lambda', dest='p_lambda', type=float, default=1, help='lambda for adversarial loss')
+    parser.add_argument('--epochs', dest='epochs', type=int, default=10, help='epoch of adversarial training')
+    parser.add_argument('--iteration', dest='iteration', type=int, default=7, help='iteration of adversarial attack')
+    parser.add_argument('--lambda', dest='p_lambda', type=float, default=1.0, help='lambda for adversarial loss')
     parser.add_argument('--mu', dest='p_mu', type=float, default=1e-4, help='mu for quantization loss')
     return parser.parse_args()
 
 
-def central_adv_train(args, epsilon=8 / 255.0, epochs=10, iteration=7):
+def central_adv_train(args, epsilon=8 / 255.0):
+    print("Current lambda: {}, mu: {}".format(args.p_lambda, args.p_mu))
+
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     train_loader, num_train = get_data_loader(args.data_dir, args.dataset, 'train',
                                               args.batch_size, shuffle=True)
@@ -130,9 +134,6 @@ def central_adv_train(args, epsilon=8 / 255.0, epochs=10, iteration=7):
     model = load_model(model_path)
 
     print("Generating train code and label")
-    # train_B, train_L = generate_code(model, train_loader)
-    # train_B, train_L = torch.from_numpy(train_B), torch.from_numpy(train_L)
-    # train_B, train_L = train_B.cuda(), train_L.cuda()
     train_B, train_L = generate_code_label(model, train_loader, num_train, args.bit, get_classes_num(args.dataset))
 
     U_ben = torch.zeros(num_train, args.bit).cuda()
@@ -145,11 +146,11 @@ def central_adv_train(args, epsilon=8 / 255.0, epochs=10, iteration=7):
 
     model.train()
     opt = torch.optim.SGD(model.parameters(), lr=0.05, weight_decay=1e-5)
-    lr_steps = epochs * len(train_loader)
+    lr_steps = args.epochs * len(train_loader)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(opt, milestones=[lr_steps / 2, lr_steps * 3 / 4], gamma=0.1)
 
     # adversarial training
-    for epoch in range(epochs):
+    for epoch in range(args.epochs):
         epoch_loss = 0
         for it, data in enumerate(train_loader):
             x, y, index = data
@@ -157,7 +158,7 @@ def central_adv_train(args, epsilon=8 / 255.0, epochs=10, iteration=7):
             y = y.cuda()
 
             center_codes_curr = hash_center_code(y, B_ben, train_L, args.bit)
-            x_adv = hash_adv(model, x, center_codes_curr, epsilon, step=2, iteration=iteration, randomize=True)
+            x_adv = hash_adv(model, x, center_codes_curr, epsilon, step=2, iteration=args.iteration, randomize=True)
             x_adv = x_adv.detach()
 
             model.zero_grad()
@@ -203,10 +204,15 @@ def central_adv_train(args, epsilon=8 / 255.0, epochs=10, iteration=7):
                 print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, loss: {:.5f}'.format(
                         epoch, it, scheduler.get_last_lr()[0], loss))
 
-        print('Epoch: %3d/%3d\tTrain_loss: %3.5f \n' % (epoch, epochs, epoch_loss / len(train_loader)))
+        print('Epoch: %3d/%3d\tTrain_loss: %3.5f \n' % (epoch, args.epochs, epoch_loss / len(train_loader)))
 
-    check_dir('log/cat_{}'.format(attack_model))
-    robust_model_path = 'checkpoint/cat_{}.pth'.format(attack_model)
+    if args.p_lambda != 1.0 or args.p_mu != 1e-4:
+        robust_model = 'cat_{}_{}_{}'.format(attack_model, args.p_lambda, args.p_mu)
+    else:
+        robust_model = 'cat_{}'.format(attack_model)
+
+    check_dir('log/{}'.format(robust_model))
+    robust_model_path = 'checkpoint/{}.pth'.format(robust_model)
     torch.save(model, robust_model_path)
 
 

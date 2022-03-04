@@ -12,6 +12,15 @@ def load_model(path):
     return model
 
 
+def get_attack_model_name(args):
+    attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
+    if args.adv:
+        attack_model = '{}_{}'.format(args.adv_method, attack_model)
+        if args.p_lambda != 1.0 or args.p_mu != 1e-4:
+            attack_model = '{}_{}_{}'.format(attack_model, args.p_lambda, args.p_mu)
+    return attack_model
+
+
 def generate_code(model, data_loader):
     hash_code_list, labels_list = [], []
     model.eval()

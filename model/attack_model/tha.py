@@ -2,7 +2,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 from utils.data_provider import *
 from utils.hamming_matching import *
-from model.util import load_model, get_database_code, generate_code, get_alpha
+from model.util import load_model, get_database_code, generate_code, get_alpha, get_attack_model_name
 from utils.data_provider import get_classes_num
 from utils.util import Logger
 
@@ -125,11 +125,7 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
     method = 'THA'
 
     # load model
-    attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
-    if args.atrdh:
-        attack_model = 'atrdh_{}'.format(attack_model)
-    else:
-        attack_model = attack_model if not args.adv else 'cat_{}'.format(attack_model)
+    attack_model = get_attack_model_name(args)
     model_path = 'checkpoint/{}.pth'.format(attack_model)
     model = load_model(model_path)
 

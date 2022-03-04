@@ -30,8 +30,10 @@ def parser_arguments():
     parser.add_argument('--iteration', dest='iteration', type=int, default=2000, help='number of images in one batch')
     parser.add_argument('--adv', dest='adv', type=str2bool, default='False',
                         help='load model through adversarial training')
-    parser.add_argument('--atrdh', dest='atrdh', type=str2bool, default='False',
-                        help='load model through atrdh adversarial training')
+    parser.add_argument('--adv_method', dest='adv_method', type=str, default='cat', choices=['cat', 'atrdh'],
+                        help='adversarial training method')
+    parser.add_argument('--lambda', dest='p_lambda', type=float, default=1.0, help='lambda for adversarial loss')
+    parser.add_argument('--mu', dest='p_mu', type=float, default=1e-4, help='mu for quantization loss')
     return parser.parse_args()
 
 
