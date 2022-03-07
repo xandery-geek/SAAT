@@ -3,7 +3,7 @@ import torch
 import argparse
 from torch.autograd import Variable
 from utils.data_provider import get_data_loader, get_classes_num
-from model.util import load_model
+from model.util import load_model, get_alpha
 from utils.util import check_dir
 
 
@@ -51,7 +51,8 @@ def hash_adv(model, query, target_hash, epsilon, step=2, iteration=7, randomize=
     delta.requires_grad = True
 
     for i in range(iteration):
-        noisy_output = model(query + delta)
+        alpha = get_alpha(i, iteration)
+        noisy_output = model(query + delta, alpha)
         loss = adv_loss(noisy_output, target_hash.detach())
         loss.backward()
 
@@ -111,7 +112,7 @@ def parser_arguments():
                         choices=['DPH', 'DPSH', 'HashNet'],
                         help='deep hashing methods')
     parser.add_argument('--backbone', dest='backbone', default='AlexNet',
-                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50', 'ResNet101'],
+                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet34', 'ResNet50', 'ResNet101'],
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
@@ -201,8 +202,11 @@ def central_adv_train(args, epsilon=8 / 255.0):
             epoch_loss += loss.item()
 
             if it % 50 == 0:
-                print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, loss: {:.5f}'.format(
-                        epoch, it, scheduler.get_last_lr()[0], loss))
+                # print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, loss: {:.5f}'.format(
+                #         epoch, it, scheduler.get_last_lr()[0], loss))
+                print('epoch: {:2d}, step: {:3d}, lr: {:.5f}\n loss: {:.5f}, ben: {:.5f}, adv: {:.5f}, qua: {:.5f},'
+                      .format(epoch, it, scheduler.get_last_lr()[0], loss, loss_hash_ben.item(), loss_adv.item(),
+                              loss_qua.item()))
 
         print('Epoch: %3d/%3d\tTrain_loss: %3.5f \n' % (epoch, args.epochs, epoch_loss / len(train_loader)))
 

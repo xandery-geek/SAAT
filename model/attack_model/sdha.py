@@ -47,7 +47,7 @@ def sdha_loss(x_hat, x, h_hat, h, idx, alpha=25.):
     return mse_loss + alpha * surrogate_loss
 
 
-def attack(model, x, idx, epochs=100, epsilon=0.039, record_loss=True):
+def attack(model, x, idx, epochs=100, epsilon=8/255., record_loss=True):
     x = x.cuda()
     h = model(x)
     x, h = x.detach(), h.detach()
@@ -57,9 +57,9 @@ def attack(model, x, idx, epochs=100, epsilon=0.039, record_loss=True):
     optimizer = load_optimizer([x_hat])
 
     h_hat = None
-    loss_list = [] if record_loss else None
+    # loss_list = [] if record_loss else None
     # perceptibility = 0
-    for epoch in tqdm(range(epochs), ncols=50):
+    for epoch in range(epochs):
         optimizer.zero_grad()
         alpha = get_alpha(epoch, epochs)
         h_hat = model(x_hat, alpha)
@@ -71,10 +71,10 @@ def attack(model, x, idx, epochs=100, epsilon=0.039, record_loss=True):
         x_hat.data = torch.max(torch.min(x_hat.data, x + epsilon), x - epsilon)
         x_hat.data = torch.clamp(x_hat.data, min=0, max=1)  # subject to [0, 1]
 
-        if loss_list is not None and (epoch + 1) % (epochs // 10) == 0:
-            loss_list.append(round(loss.item(), 4))
-
-    print("loss: {}".format(loss_list))
+    #     if loss_list is not None and (epoch + 1) % (epochs // 10) == 0:
+    #         loss_list.append(round(loss.item(), 4))
+    #
+    # print("loss: {}".format(loss_list))
     return h.cpu().sign(), h_hat.detach().cpu().sign(), x_hat.detach().cpu()
 
 
@@ -109,7 +109,7 @@ def sdha(args):
 
     # attack
     test_code, test_code_hat = None, None
-    for i, (x, label, idx) in enumerate(test_loader):
+    for i, (x, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
         h, h_hat, x_hat = attack(model, x, idx, epochs=args.iteration)
         test_code = h.numpy() if test_code is None else np.concatenate((test_code, h.numpy()), axis=0)
         test_code_hat = h_hat.numpy() if test_code_hat is None else np.concatenate((test_code_hat, h_hat.numpy()),
@@ -123,9 +123,9 @@ def sdha(args):
     np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), test_code_hat)
 
     # calculate map
-    ori_map = cal_map(database_code, test_code, database_labels, test_labels, 5000)
+    # ori_map = cal_map(database_code, test_code, database_labels, test_labels, 5000)
     adv_map = cal_map(database_code, test_code_hat, database_labels, test_labels, 5000)
 
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
-    logger.log('Ori MAP(retrieval database): {}'.format(ori_map))
+    # logger.log('Ori MAP(retrieval database): {}'.format(ori_map))
     logger.log('SDHA MAP(retrieval database): {}'.format(adv_map))

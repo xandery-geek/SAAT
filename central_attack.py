@@ -3,7 +3,7 @@ import argparse
 import torch.nn.functional as F
 from utils.data_provider import *
 from utils.hamming_matching import *
-from model.util import load_model, get_database_code, generate_code, get_alpha, get_attack_model_name
+from model.util import load_model, get_database_code, generate_code, get_alpha, get_attack_model_name, save_images
 from utils.util import Logger, str2bool, retrieve_images
 from tqdm import tqdm
 
@@ -112,7 +112,12 @@ def central_attack(args, epsilon=8/255.):
         qB_ori[index.numpy(), :] = query_code_ori.cpu().data.numpy()
         cB[index.numpy(), :] = center_codes.cpu().data.numpy()
 
-        # if it == 0:
+        # if it == 14:
+        #     save_images(queries[:32].cpu().numpy(), query_adv[:32].cpu().numpy(),
+        #                 attack_model, method=method, batch=it)
+        #     exit(0)
+
+        # if it == 12:
         #     print("Retrieve images")
         #     # retrieve by original queries
         #     images_arr, labels_arr = retrieve_images(queries.cpu().numpy(), labels.cpu().numpy(),
@@ -126,7 +131,7 @@ def central_attack(args, epsilon=8/255.):
         #                                              database_hash, 10, args.data_dir, args.dataset)
         #     np.save(os.path.join('log', attack_model, 'adv_retrieve_images_{}.npy'.format(it)), images_arr)
         #     np.save(os.path.join('log', attack_model, 'adv_retrieve_labels_{}.npy'.format(it)), labels_arr)
-
+        #     exit(0)
 
     # save code
     np.save(os.path.join('log', attack_model, 'Original_code.npy'), qB_ori)
@@ -163,6 +168,10 @@ def parser_arguments():
     parser.add_argument('--iteration', dest='iteration', type=int, default=100, help='number of images in one batch')
     parser.add_argument('--adv', dest='adv', type=str2bool, default='False',
                         help='load model through adversarial training')
+    parser.add_argument('--adv_method', dest='adv_method', type=str, default='cat', choices=['cat', 'atrdh'],
+                        help='adversarial training method')
+    parser.add_argument('--lambda', dest='p_lambda', type=float, default=1.0, help='lambda for adversarial loss')
+    parser.add_argument('--mu', dest='p_mu', type=float, default=1e-4, help='mu for quantization loss')
     return parser.parse_args()
 
 
