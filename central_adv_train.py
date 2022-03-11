@@ -51,7 +51,8 @@ def hash_adv(model, query, target_hash, epsilon, step=2, iteration=7, randomize=
     delta.requires_grad = True
 
     for i in range(iteration):
-        alpha = get_alpha(i, iteration)
+        # alpha = get_alpha(i, iteration)
+        alpha = 1
         noisy_output = model(query + delta, alpha)
         loss = adv_loss(noisy_output, target_hash.detach())
         loss.backward()

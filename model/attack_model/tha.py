@@ -5,6 +5,7 @@ from utils.hamming_matching import *
 from model.util import load_model, get_database_code, generate_code, get_alpha, get_attack_model_name
 from utils.data_provider import get_classes_num
 from utils.util import Logger
+from tqdm import tqdm
 
 
 class PrototypeNet(nn.Module):
@@ -148,7 +149,7 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
     if not args.adv:
         pnet_path = 'checkpoint/PrototypeNet_{}.pth'.format(attack_model)
     else:
-        pnet_path = 'checkpoint/cat_PrototypeNet_{}.pth'.format(attack_model)
+        pnet_path = 'checkpoint/{}_PrototypeNet_{}.pth'.format(args.adv_method, attack_model)
 
     if os.path.exists(pnet_path):
         pnet = load_model(pnet_path)
@@ -208,11 +209,8 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
     qB_ori = np.zeros([num_test, args.bit], dtype=np.float32)
     query_prototype_codes = np.zeros((num_test, args.bit), dtype=np.float)
     perceptibility = 0
-    for it, data in enumerate(test_loader):
+    for it, data in enumerate(tqdm(test_loader, ncols=50)):
         queries, _, index = data
-
-        n = index[-1].item() + 1
-        print(n)
         queries = queries.cuda()
         batch_size_ = index.size(0)
 
@@ -234,7 +232,7 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
         # sample_image(query_adv, '{}_adv'.format(it))
 
     # save code
-    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), qB)
+    # np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), qB)
 
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('perceptibility: {:.7f}'.format(torch.sqrt(perceptibility / num_test)))

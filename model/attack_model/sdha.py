@@ -47,7 +47,7 @@ def sdha_loss(x_hat, x, h_hat, h, idx, alpha=25.):
     return mse_loss + alpha * surrogate_loss
 
 
-def attack(model, x, idx, epochs=100, epsilon=8/255., record_loss=True):
+def attack(model, x, idx, epochs=100, epsilon=8/255., record_loss=False):
     x = x.cuda()
     h = model(x)
     x, h = x.detach(), h.detach()
@@ -76,6 +76,22 @@ def attack(model, x, idx, epochs=100, epsilon=8/255., record_loss=True):
     #
     # print("loss: {}".format(loss_list))
     return h.cpu().sign(), h_hat.detach().cpu().sign(), x_hat.detach().cpu()
+
+
+def theory_attack(model, x, idx):
+    x = x.cuda()
+    h = model(x)
+    h = h.detach()
+    batch_size = h.size(0)
+    similarity = g_similarity[idx]  # b * n
+
+    h_hat = torch.zeros(h.size())
+    for i in range(batch_size):
+        r_idx = torch.where(similarity[i] > 0)[0]
+        r = h[i].unsqueeze(0) if r_idx.size(dim=0) == 0 else g_code[r_idx]  # n_{u} * k
+        r = r.sign()
+        h_hat[i] = -torch.mean(r, dim=0).sign()
+    return h.cpu().sign(), h_hat.cpu()
 
 
 g_code, g_similarity = torch.tensor(0), torch.tensor(0)
@@ -110,7 +126,8 @@ def sdha(args):
     # attack
     test_code, test_code_hat = None, None
     for i, (x, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
-        h, h_hat, x_hat = attack(model, x, idx, epochs=args.iteration)
+        h, h_hat, _ = attack(model, x, idx, epochs=args.iteration)
+        # h, h_hat = theory_attack(model, x, idx)
         test_code = h.numpy() if test_code is None else np.concatenate((test_code, h.numpy()), axis=0)
         test_code_hat = h_hat.numpy() if test_code_hat is None else np.concatenate((test_code_hat, h_hat.numpy()),
                                                                                      axis=0)

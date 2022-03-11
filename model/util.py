@@ -42,6 +42,8 @@ def get_database_code(model, dataloader, attack_model):
     else:
         print("generate database code")
         database_code, database_labels = generate_code(model, dataloader)
+        if not os.path.exists(database_path):
+            os.makedirs(database_path)
         np.save(database_hash_file, database_code)
         np.save(database_labels_file, database_labels)
     return database_code, database_labels

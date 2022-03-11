@@ -47,12 +47,12 @@ def hash_adv(model, query, target_hash, epsilon, step=1.0, iteration=100, random
 def hash_center_code(y, B, L, bit):
     code = torch.zeros(y.size(0), bit).cuda()
     for i in range(y.size(0)):
-        l = y[i].repeat(L.size(0), 1)
-        w = torch.sum(l * L, dim=1) / torch.sum(torch.sign(l + L), dim=1)
-        w1 = w.repeat(bit, 1).t()
-        w2 = 1 - torch.sign(w1)
-        c = w2.sum() / bit
-        w1 = 1 - w2
+        l = y[i].repeat(L.size(0), 1)  # N*C
+        w = torch.sum(l * L, dim=1) / torch.sum(torch.sign(l + L), dim=1)  # N
+        w1 = w.repeat(bit, 1).t()  # N*bit
+        w2 = 1 - torch.sign(w1)  # N*bit, weights for negative samples
+        c = w2.sum() / bit   # number of dissimilar samples
+        w1 = 1 - w2  # weights for positive samples
         # code[i] = torch.sign(torch.sum(w1*B-w2*B, dim=0))
         code[i] = torch.sign(torch.sum(c * w1 * B - (L.size(0) - c) * w2 * B, dim=0))
         # code[i] = torch.sign(torch.sum(w1*B, dim=0))
@@ -86,7 +86,7 @@ def central_attack(args, epsilon=8/255.):
     test_labels = get_data_label(args.data_dir, args.dataset, 'test')
     database_labels = get_data_label(args.data_dir, args.dataset, 'database')
 
-    #
+    # generate hashcode and labels for training set
     train_B, train_L = generate_code(model, train_loader)
     train_B, train_L = torch.from_numpy(train_B), torch.from_numpy(train_L)
     train_B, train_L = train_B.cuda(), train_L.cuda()
@@ -96,11 +96,20 @@ def central_attack(args, epsilon=8/255.):
     cB = np.zeros([num_test, args.bit], dtype=np.float32)
     perceptibility = 0
 
+    # for targeted attack
+    # target_label_path = 'log/target_label_tadh_{}.txt'.format(args.dataset)
+    # targeted_labels = np.loadtxt(target_label_path, dtype=np.int)
+
     for it, data in enumerate(tqdm(test_loader, ncols=50)):
         queries, labels, index = data
         queries = queries.cuda()
         labels = labels.cuda()
         batch_size_ = index.size(0)
+
+        # for targeted attack
+        # batch_target_label = targeted_labels[index.numpy(), :]
+        # batch_target_label = torch.from_numpy(batch_target_label).float().cuda()
+        # center_codes = hash_center_code(batch_target_label, train_B, train_L, args.bit)
 
         center_codes = hash_center_code(labels, train_B, train_L, args.bit)
         query_adv = hash_adv(model, queries, center_codes, epsilon, iteration=args.iteration)
@@ -112,8 +121,8 @@ def central_attack(args, epsilon=8/255.):
         qB_ori[index.numpy(), :] = query_code_ori.cpu().data.numpy()
         cB[index.numpy(), :] = center_codes.cpu().data.numpy()
 
-        # if it == 14:
-        #     save_images(queries[:32].cpu().numpy(), query_adv[:32].cpu().numpy(),
+        # if it == 10:
+        #     save_images(queries[:16].cpu().numpy(), query_adv[:16].cpu().numpy(),
         #                 attack_model, method=method, batch=it)
         #     exit(0)
 
@@ -134,8 +143,8 @@ def central_attack(args, epsilon=8/255.):
         #     exit(0)
 
     # save code
-    np.save(os.path.join('log', attack_model, 'Original_code.npy'), qB_ori)
-    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), qB)
+    # np.save(os.path.join('log', attack_model, 'Original_code.npy'), qB_ori)
+    # np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), qB)
 
     # calculate map
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
