@@ -3,7 +3,7 @@ import torch
 import argparse
 from torch.autograd import Variable
 from utils.data_provider import get_data_loader, get_classes_num
-from model.util import load_model, get_alpha
+from model.util import load_model
 from utils.util import check_dir
 
 
@@ -19,8 +19,8 @@ def log_trick(x):
     return lt
 
 
-def pairwise_loss_updated(u, U, y, Y):
-    alpha = 0.1
+def pairwise_loss_updated(u, U, y, Y, bit):
+    alpha = 10/bit
     similarity = (y @ Y.t() > 0).float()
     dot_product = alpha * u @ U.t()
     mask_positive = similarity.data > 0
@@ -51,7 +51,6 @@ def hash_adv(model, query, target_hash, epsilon, step=2, iteration=7, randomize=
     delta.requires_grad = True
 
     for i in range(iteration):
-        # alpha = get_alpha(i, iteration)
         alpha = 1
         noisy_output = model(query + delta, alpha)
         loss = adv_loss(noisy_output, target_hash.detach())
@@ -166,10 +165,10 @@ def central_adv_train(args, epsilon=8 / 255.0):
             model.zero_grad()
             # mixup
             # x_adv = mixup(x, x_adv)
-            output_adv = model(x_adv)
+            output_adv = model(x_adv, 1.0)
             # y_ben = model.classify()
             U_adv[index, :] = output_adv.data
-            output_ben = model(x)
+            output_ben = model(x, 1.0)
             # y_adv = model.classify()
             B_ben[index, :] = torch.sign(output_ben.data)
             U_ben[index, :] = output_ben.data
@@ -188,7 +187,7 @@ def central_adv_train(args, epsilon=8 / 255.0):
                 quan = torch.mean((output_ben - Bbatch)**2)
                 loss_hash_ben += 1e-4*quan
             elif args.hash_method == 'HashNet':
-                loss_hash_ben = pairwise_loss_updated(output_ben, U_ben, y, train_L)
+                loss_hash_ben = pairwise_loss_updated(output_ben, U_ben, y, train_L, args.bit)
             else:
                 raise NotImplementedError()
 

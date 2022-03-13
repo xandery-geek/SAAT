@@ -56,10 +56,12 @@ class HashNet(BaseHashModel):
         return loss
 
     def forward(self, x, alpha=None):
-        if self.training:
+        if alpha is not None:
+            self.scale = alpha
+        elif self.training:
             self.iter_num += 1
             if self.iter_num % self.step_size == 0:
                 self.scale = self.init_scale * (math.pow((1. + self.gamma * self.iter_num), self.power))
         else:
-            self.scale = alpha if alpha is not None else self.init_scale
+            self.scale = self.init_scale
         return self.model(x, self.scale)

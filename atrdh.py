@@ -64,10 +64,11 @@ def parser_arguments():
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
+    parser.add_argument('--epochs', dest='epochs', type=int, default=100, help='number of training epochs')
     return parser.parse_args()
 
 
-def atrdh(args, epsilon=8 / 255.0, epochs=100, iteration=7):
+def atrdh(args, epsilon=8 / 255.0, iteration=7):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
 
     attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
@@ -89,7 +90,7 @@ def atrdh(args, epsilon=8 / 255.0, epochs=100, iteration=7):
     optimizer_l = torch.optim.Adam(pnet.parameters(), lr=1e-4, betas=(0.5, 0.999))
     # opt = torch.optim.SGD(model.parameters(), lr=0.05, weight_decay=1e-5)
     opt = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.5, 0.999))
-    lr_steps = epochs * len(train_loader)
+    lr_steps = args.epochs * len(train_loader)
     scheduler_l = torch.optim.lr_scheduler.MultiStepLR(optimizer_l, milestones=[lr_steps / 2, lr_steps * 3 / 4],
                                                        gamma=0.1)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(opt, milestones=[lr_steps / 2, lr_steps * 3 / 4], gamma=0.1)
@@ -100,7 +101,7 @@ def atrdh(args, epsilon=8 / 255.0, epochs=100, iteration=7):
     U_adv = torch.zeros(num_train, args.bit).cuda()
 
     # adversarial training
-    for epoch in range(epochs):
+    for epoch in range(args.epochs):
         epoch_loss = 0.0
         for it, data in enumerate(train_loader):
             x, y, index = data
@@ -148,7 +149,7 @@ def atrdh(args, epsilon=8 / 255.0, epochs=100, iteration=7):
                 regterm = (Bbatch - output_ben).pow(2).sum() / (num_train * batch_size_)
                 loss = -logloss + 50 * regterm
             elif args.hash_method == 'HashNet':
-                loss = pairwise_loss_updated(output_ben, U_ben.cuda(), y, train_L)
+                loss = pairwise_loss_updated(output_ben, U_ben.cuda(), y, train_L, args.bit)
             else:
                 raise NotImplementedError()
 
