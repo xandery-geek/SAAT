@@ -57,8 +57,7 @@ def attack(model, x, idx, epochs=100, epsilon=8/255., record_loss=False):
     optimizer = load_optimizer([x_hat])
 
     h_hat = None
-    # loss_list = [] if record_loss else None
-    # perceptibility = 0
+    loss_list = [] if record_loss else None
     for epoch in range(epochs):
         optimizer.zero_grad()
         alpha = get_alpha(epoch, epochs)
@@ -67,14 +66,13 @@ def attack(model, x, idx, epochs=100, epsilon=8/255., record_loss=False):
         loss.backward()
         optimizer.step()
 
-        # perceptibility += torch.sqrt(torch.mean(torch.square(x.cpu() - x_hat.detach().cpu())))
         x_hat.data = torch.max(torch.min(x_hat.data, x + epsilon), x - epsilon)
         x_hat.data = torch.clamp(x_hat.data, min=0, max=1)  # subject to [0, 1]
 
-    #     if loss_list is not None and (epoch + 1) % (epochs // 10) == 0:
-    #         loss_list.append(round(loss.item(), 4))
-    #
-    # print("loss: {}".format(loss_list))
+        if loss_list is not None and (epoch + 1) % (epochs // 10) == 0:
+            loss_list.append(round(loss.item(), 4))
+    if loss_list is not None:
+        print("loss: {}".format(loss_list))
     return h.cpu().sign(), h_hat.detach().cpu().sign(), x_hat.detach().cpu()
 
 
@@ -112,37 +110,34 @@ def sdha(args):
     test_loader, num_test = get_data_loader(args.data_dir, args.dataset, 'test',
                                             args.batch_size, shuffle=False)
 
-    test_labels = get_data_label(args.data_dir, args.dataset, 'test')
+    test_label = get_data_label(args.data_dir, args.dataset, 'test')
 
     # generate global code and label
     global g_code, g_similarity
     g_code = torch.zeros(num_test, args.bit).float().cuda()
-    label = torch.from_numpy(test_labels).float().cuda()
+    label = torch.from_numpy(test_label).float().cuda()
     g_similarity = label @ label.transpose(0, 1)  # n * n
 
     for x, _, idx in test_loader:
         g_code[idx] = model(x.cuda()).detach()
 
     # attack
-    test_code, test_code_hat = None, None
+    query_code_arr, adv_code_arr = None, None
     for i, (x, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
         h, h_hat, _ = attack(model, x, idx, epochs=args.iteration)
         # h, h_hat = theory_attack(model, x, idx)
-        test_code = h.numpy() if test_code is None else np.concatenate((test_code, h.numpy()), axis=0)
-        test_code_hat = h_hat.numpy() if test_code_hat is None else np.concatenate((test_code_hat, h_hat.numpy()),
-                                                                                     axis=0)
-        # if i == 0:
-        #     save_images(x[:4].cpu().numpy(), x_hat[:4].numpy(), attack_model, method=method, batch=i)
+        query_code_arr = h.numpy() if query_code_arr is None else np.concatenate((query_code_arr, h.numpy()), axis=0)
+        adv_code_arr = h_hat.numpy() if adv_code_arr is None else np.concatenate((adv_code_arr, h_hat.numpy()), axis=0)
 
-    database_code, database_labels = get_database_code(model, database_loader, attack_model)
+    database_code, database_label = get_database_code(model, database_loader, attack_model)
 
     # save code
-    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), test_code_hat)
+    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), adv_code_arr)
 
     # calculate map
-    # ori_map = cal_map(database_code, test_code, database_labels, test_labels, 5000)
-    adv_map = cal_map(database_code, test_code_hat, database_labels, test_labels, 5000)
+    ori_map = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
+    adv_map = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
 
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
-    # logger.log('Ori MAP(retrieval database): {}'.format(ori_map))
-    logger.log('SDHA MAP(retrieval database): {}'.format(adv_map))
+    logger.log('SDHA MAP(retrieval database): {:.5f}'.format(adv_map))
+    logger.log('Ori MAP(retrieval database): {:.5f}'.format(ori_map))

@@ -22,29 +22,16 @@ def target_hash_adv(model, query, target_hash, epsilon, step=1, iteration=2000, 
     for i in range(iteration):
         alpha = get_alpha(i, iteration)
         noisy_output = model(query + delta, alpha)
-        # noisy_output = model(query + delta)
         loss = target_adv_loss(noisy_output, target_hash)
         loss.backward()
 
+        # delta.data = delta - step * delta.grad.detach()
         # delta.data = delta - step * delta.grad.detach() / (torch.norm(delta.grad.detach(), 2) + 1e-9)
         delta.data = delta - step / 255 * torch.sign(delta.grad.detach())
-        # delta.data = delta - step * delta.grad.detach()
         delta.data = delta.data.clamp(-epsilon, epsilon)
         delta.data = (query.data + delta.data).clamp(0, 1) - query.data
         delta.grad.zero_()
-
-        # if i % 10 == 0:
-        #     print('it:{}, loss:{}'.format(i, loss))
-
-    # print(torch.min(255*delta.data))
-    # print(torch.max(255*delta.data))
     return query + delta.detach()
-
-
-def generate_hash(model, samples, num_data, bit):
-    output = model(samples)
-    B = torch.sign(output.cpu().data).numpy()
-    return B
 
 
 def hash_anchor_code(hash_codes):
@@ -72,13 +59,13 @@ def dhta(args, num_target=9, epsilon=0.032):
     test_loader, num_test = get_data_loader(args.data_dir, args.dataset, 'test',
                                             args.batch_size, shuffle=False)
 
-    database_hash, _ = get_database_code(model, database_loader, attack_model)
+    database_code, _ = get_database_code(model, database_loader, attack_model)
 
-    test_labels_int = get_data_label(args.data_dir, args.dataset, 'test')
-    database_labels_int = get_data_label(args.data_dir, args.dataset, 'database')
+    test_label = get_data_label(args.data_dir, args.dataset, 'test')
+    database_label = get_data_label(args.data_dir, args.dataset, 'database')
 
     # convert one-hot code to string
-    database_labels_str = [''.join(label) for label in database_labels_int.astype(str)]
+    database_labels_str = [''.join(label) for label in database_label.astype(str)]
     database_labels_str = np.array(database_labels_str, dtype=str)
 
     # calculate target label
@@ -96,13 +83,11 @@ def dhta(args, num_target=9, epsilon=0.032):
 
         candidate_labels_int = [list(candidate_labels[i]) for i in range(len(candidate_labels))]
         candidate_labels_int = np.array(candidate_labels_int, dtype=np.int)
-        # print(candidate_labels_int.shape)
 
         target_labels = []
-        S = np.dot(test_labels_int, candidate_labels_int.T)
+        similarity = np.dot(test_label, candidate_labels_int.T)
         for i in range(num_test):
-            label_ori = test_labels_int[i]
-            s = S[i]
+            s = similarity[i]
             candidate_index = np.where(s == 0)
             random_index = np.random.choice(candidate_index[0])
             target_label = candidate_labels_int[random_index]
@@ -114,46 +99,44 @@ def dhta(args, num_target=9, epsilon=0.032):
 
     target_labels_str = [''.join(label) for label in target_labels.astype(str)]
 
-    qB = np.zeros([num_test, args.bit], dtype=np.float32)
-    query_anchor_codes = np.zeros((num_test, args.bit), dtype=np.float)
+    adv_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
+    anchor_code_arr = np.zeros((num_test, args.bit), dtype=np.float)
     # perceptibility = 0
     for it, data in enumerate(tqdm(test_loader, ncols=50)):
-        queries, _, index = data
-        # sample_image(queries, '{}_benign'.format(it))
-
-        queries = queries.cuda()
+        query, _, index = data
+        query = query.cuda()
         batch_size_ = index.size(0)
 
-        anchor_codes = torch.zeros((batch_size_, args.bit), dtype=torch.float)
+        batch_anchor_code = torch.zeros((batch_size_, args.bit), dtype=torch.float)
         for i in range(batch_size_):
             # select hash code which has the same label with target from database randomly
             target_label_str = target_labels_str[index[0] + i]
             anchor_indexes = np.where(database_labels_str == target_label_str)
             anchor_indexes = np.random.choice(anchor_indexes[0], size=num_target)
 
-            anchor_code = hash_anchor_code(torch.from_numpy(database_hash[anchor_indexes]))
+            anchor_code = hash_anchor_code(torch.from_numpy(database_code[anchor_indexes]))
             anchor_code = anchor_code.view(1, args.bit)
-            anchor_codes[i, :] = anchor_code
+            batch_anchor_code[i, :] = anchor_code
 
-        query_anchor_codes[it * args.batch_size:it * args.batch_size + batch_size_] = anchor_codes.numpy()
-        query_adv = target_hash_adv(model, queries, anchor_codes.cuda(), epsilon, iteration=args.iteration)
+        anchor_code_arr[it * args.batch_size:it * args.batch_size + batch_size_] = batch_anchor_code.numpy()
+        adv_query = target_hash_adv(model, query, batch_anchor_code.cuda(), epsilon, iteration=args.iteration)
         u_ind = np.linspace(it * args.batch_size, np.min((num_test, (it + 1) * args.batch_size)) - 1,
                             batch_size_, dtype=int)
 
         # perceptibility += F.mse_loss(queries, query_adv).data * batch_size_
-        query_code = generate_hash(model, query_adv, batch_size_, args.bit)
-        qB[u_ind, :] = query_code
+        adv_code = model(adv_query).sign().cpu().data.numpy()
+        adv_code_arr[u_ind, :] = adv_code
 
     # save code
-    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), qB)
+    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), adv_code_arr)
 
-    # a_map = cal_map(database_hash, query_anchor_codes, database_labels_int, target_labels, 5000)
-    a_t_map = cal_map(database_hash, query_anchor_codes, database_labels_int, test_labels_int, 5000)
-    # t_map = cal_map(database_hash, qB, database_labels_int, target_labels, 5000)
-    _map = cal_map(database_hash, qB, database_labels_int, test_labels_int, 5000)
+    a_t_map = cal_map(database_code, anchor_code_arr, database_label, target_labels, 5000)
+    a_map = cal_map(database_code, anchor_code_arr, database_label, test_label, 5000)
+    t_map = cal_map(database_code, adv_code_arr, database_label, target_labels, 5000)
+    _map = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
 
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
-    # logger.log('AnchorCode t-MAP(retrieval database) :{}'.format(a_map))
-    logger.log('AnchorCode MAP(retrieval database) :{}'.format(a_t_map))
-    # logger.log('{} t-MAP(retrieval database) :{}'.format(method, t_map))
-    logger.log('{} MAP(retrieval database): {}'.format(method, _map))
+    logger.log('AnchorCode t-MAP(retrieval database) :{:.5f}'.format(a_t_map))
+    logger.log('AnchorCode MAP(retrieval database) :{:.5f}'.format(a_map))
+    logger.log('{} t-MAP(retrieval database) :{:.5f}'.format(method, t_map))
+    logger.log('{} MAP(retrieval database): {:.5f}'.format(method, _map))

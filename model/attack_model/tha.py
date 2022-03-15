@@ -30,30 +30,22 @@ class CircleLoss(nn.Module):
         self.soft_plus = nn.Softplus()
 
     def forward(self, sp, sn):
-        # ap = torch.clamp_min(- sp.detach() + 1 + self.m, min=0.)
-        # an = torch.clamp_min(sn.detach() + self.m, min=0.)
-
-        # delta_p = 1 - self.m
-        # delta_n = self.m
-
-        # logit_p = - ap * (sp - delta_p) * self.gamma
-        # logit_n = an * (sn - delta_n) * self.gamma
-
         ap = torch.clamp_min(- sp.detach() + 2, min=0.)
         an = torch.clamp_min(sn.detach() + 2, min=0.)
 
         logit_p = - ap * sp * self.gamma
         logit_n = an * sn * self.gamma
-        # logit_p = - sp * self.gamma
-        # logit_n = sn * self.gamma
-
         loss = self.soft_plus(torch.logsumexp(logit_n, dim=0) + torch.logsumexp(logit_p, dim=0))
-        # loss = torch.logsumexp(logit_n, dim=0) + torch.logsumexp(logit_p, dim=0)
-
         return loss
 
 
 def select_target_label(data_labels, target_labels):
+    """
+    select label which is different form original label
+    :param data_labels:
+    :param target_labels: candidate target label
+    :return:
+    """
     select_index = None
     candidate_index = np.array(range(target_labels.size(0)))
     for label in data_labels:
@@ -82,9 +74,6 @@ def similarity(batch_feature, features, batch_label, labels, bit):
 
 def target_adv_loss(noisy_output, target_hash):
     loss = -torch.mean(noisy_output * target_hash)
-    # loss = noisy_output * target_hash
-    # loss = (loss -2)*loss
-    # loss = torch.mean(loss)
     return loss
 
 
@@ -101,17 +90,13 @@ def target_hash_adv(model, query, target_hash, epsilon, step=1, iteration=2000, 
         loss = target_adv_loss(noisy_output, target_hash.detach())
         loss.backward()
 
+        # delta.data = delta - step * delta.grad.detach()
         # delta.data = delta - step * delta.grad.detach() / (torch.norm(delta.grad.detach(), 2) + 1e-9)
         delta.data = delta - step / 255 * torch.sign(delta.grad.detach())
-        # delta.data = delta - step * delta.grad.detach()
         delta.data = delta.data.clamp(-epsilon, epsilon)
         delta.data = (query.data + delta.data).clamp(0, 1) - query.data
         delta.grad.zero_()
 
-        # if i % 10 == 0:
-        #     print('it:{}, loss:{}'.format(i, loss))
-    # print(torch.min(255*delta.data))
-    # print(torch.max(255*delta.data))
     return query + delta.detach()
 
 
@@ -138,13 +123,13 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
     test_loader, num_test = get_data_loader(args.data_dir, args.dataset, 'test',
                                             args.batch_size, shuffle=False)
 
-    test_labels = get_data_label(args.data_dir, args.dataset, 'test')
-    database_labels = get_data_label(args.data_dir, args.dataset, 'database')
+    test_label = get_data_label(args.data_dir, args.dataset, 'test')
+    database_label = get_data_label(args.data_dir, args.dataset, 'database')
 
-    database_labels = torch.from_numpy(database_labels).float()
-    target_labels = database_labels.unique(dim=0)
+    database_label = torch.from_numpy(database_label).float()
+    target_labels = database_label.unique(dim=0)
 
-    database_hash, _ = get_database_code(model, database_loader, attack_model)
+    database_code, _ = get_database_code(model, database_loader, attack_model)
 
     if not args.adv:
         pnet_path = 'checkpoint/PrototypeNet_{}.pth'.format(attack_model)
@@ -156,35 +141,31 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
     else:
         print("Training PrototypeNet")
         pnet = PrototypeNet(args.bit, num_classes).cuda()
-        optimizer_l = torch.optim.Adam(pnet.parameters(), lr=lr, betas=(0.5, 0.999))
-        epochs = 100
-        steps = 300
-        # batch_size = 64
+        pnet_optimizer = torch.optim.Adam(pnet.parameters(), lr=lr, betas=(0.5, 0.999))
+        epochs, steps = 100, 300
         lr_steps = epochs * steps
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer_l,
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(pnet_optimizer,
                                                          milestones=(lr_steps / 2, lr_steps * 3 / 4), gamma=0.1)
-        # criterion_l2 = torch.nn.MSELoss()
         circle_loss = CircleLoss(m=0, gamma=1)
 
         # hash codes of training set
-        train_hash, train_labels = generate_code(model, train_loader)
-        train_hash = torch.from_numpy(train_hash).cuda()
-        train_labels = torch.from_numpy(train_labels).cuda()
+        train_code, train_label = generate_code(model, train_loader)
+        train_code, train_label = torch.from_numpy(train_code).cuda(), torch.from_numpy(train_label).cuda()
 
         for epoch in range(epochs):
             for i in range(steps):
                 select_index = np.random.choice(range(target_labels.size(0)), size=args.batch_size)
                 batch_target_label = target_labels.index_select(0, torch.from_numpy(select_index)).cuda()
 
-                optimizer_l.zero_grad()
-                target_hash_l = pnet(batch_target_label)
-                sp, sn = similarity(target_hash_l, train_hash, batch_target_label, train_labels, args.bit)
+                pnet_optimizer.zero_grad()
+                target_hash_label = pnet(batch_target_label)
+                sp, sn = similarity(target_hash_label, train_code, batch_target_label, train_label, args.bit)
                 logloss = circle_loss(sp, sn) / args.batch_size
-                regterm = (torch.sign(target_hash_l) - target_hash_l).pow(2).sum() / (1e4 * args.batch_size)
+                regterm = (torch.sign(target_hash_label) - target_hash_label).pow(2).sum() / (1e4 * args.batch_size)
                 loss = logloss + regterm
-
                 loss.backward()
-                optimizer_l.step()
+                pnet_optimizer.step()
+
                 if (i+1) % 300 == 0:
                     print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, logloss:{:.5f}, regterm: {:.5f}'.
                           format(epoch, i, scheduler.get_last_lr()[0], logloss, regterm))
@@ -193,57 +174,52 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
         torch.save(pnet, pnet_path)
         pnet.eval()
 
-    target_label_path = 'log/target_label_tadh_{}.txt'.format(args.dataset)
+    target_label_path = 'log/target_label_tha_{}.txt'.format(args.dataset)
     if os.path.exists(target_label_path):
-        targeted_labels = np.loadtxt(target_label_path, dtype=np.int)
+        target_label_arr = np.loadtxt(target_label_path, dtype=np.int)
     else:
         print("Generating target labels")
-        targeted_labels = np.zeros([num_test, num_classes])
+        target_label_arr = np.zeros([num_test, num_classes])
         for data in test_loader:
             _, label, index = data
             batch_target_label = select_target_label(label, target_labels)
-            targeted_labels[index.numpy(), :] = batch_target_label.numpy()
-        np.savetxt(target_label_path, targeted_labels, fmt="%d")
+            target_label_arr[index.numpy(), :] = batch_target_label.numpy()
+        np.savetxt(target_label_path, target_label_arr, fmt="%d")
 
-    qB = np.zeros([num_test, args.bit], dtype=np.float32)
-    qB_ori = np.zeros([num_test, args.bit], dtype=np.float32)
-    query_prototype_codes = np.zeros((num_test, args.bit), dtype=np.float)
+    adv_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
+    query_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
+    prototype_code_arr = np.zeros((num_test, args.bit), dtype=np.float)
     perceptibility = 0
     for it, data in enumerate(tqdm(test_loader, ncols=50)):
-        queries, _, index = data
-        queries = queries.cuda()
+        query, _, index = data
+        query = query.cuda()
         batch_size_ = index.size(0)
 
-        batch_target_label = targeted_labels[index.numpy(), :]
+        batch_target_label = target_label_arr[index.numpy(), :]
         batch_target_label = torch.from_numpy(batch_target_label).float().cuda()
 
-        batch_prototype_codes = pnet(batch_target_label)
-        prototype_codes = torch.sign(batch_prototype_codes)
-        query_prototype_codes[index.numpy(), :] = prototype_codes.cpu().data.numpy()
-        query_adv = target_hash_adv(model, queries, prototype_codes, epsilon, iteration=args.iteration)
+        batch_prototype_code = pnet(batch_target_label)
+        prototype_code = torch.sign(batch_prototype_code)
+        prototype_code_arr[index.numpy(), :] = prototype_code.cpu().data.numpy()
+        adv_query = target_hash_adv(model, query, prototype_code, epsilon, iteration=args.iteration)
 
-        perceptibility += F.mse_loss(queries, query_adv).data * batch_size_
-        query_code = model(query_adv)
-        query_code = torch.sign(query_code)
-        qB[index.numpy(), :] = query_code.cpu().data.numpy()
-        qB_ori[index.numpy(), :] = model(queries).sign().cpu().data.numpy()
-
-        # sample_image(queries, '{}_benign'.format(it))
-        # sample_image(query_adv, '{}_adv'.format(it))
+        perceptibility += F.mse_loss(query, adv_query).data * batch_size_
+        adv_code_arr[index.numpy(), :] = model(adv_query).sign().cpu().data.numpy()
+        query_code_arr[index.numpy(), :] = model(query).sign().cpu().data.numpy()
 
     # save code
-    # np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), qB)
+    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), adv_code_arr)
 
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
-    logger.log('perceptibility: {:.7f}'.format(torch.sqrt(perceptibility / num_test)))
+    logger.log('perceptibility: {:.5f}'.format(torch.sqrt(perceptibility / num_test)))
 
-    # map_ = cal_map(database_hash, qB_ori, database_labels.numpy(), test_labels, 5000)
-    # logger.log('Ori MAP(retrieval database): {}'.format(map_))
-    map_ = cal_map(database_hash, qB, database_labels.numpy(), test_labels, 5000)
-    logger.log('THA MAP(retrieval database): {}'.format(map_))
-    # p_map = cal_map(database_hash, query_prototype_codes, database_labels.numpy(), test_labels, 5000)
-    # logger.log('Theory MAP(retrieval database): {}'.format(p_map))
-    # t_map = cal_map(database_hash, qB, database_labels.numpy(), targeted_labels, 5000)
-    # logger.log('THA t-MAP(retrieval database): {}'.format(t_map))
-    # t_map = cal_map(database_hash, query_prototype_codes, database_labels.numpy(), targeted_labels, 5000)
-    # logger.log('Theory t-MAP(retrieval database): {}'.format(t_map))
+    map_ = cal_map(database_code, adv_code_arr, database_label.numpy(), test_label, 5000)
+    logger.log('THA MAP(retrieval database): {:.5f}'.format(map_))
+    map_ = cal_map(database_code, prototype_code_arr, database_label.numpy(), test_label, 5000)
+    logger.log('Theory MAP(retrieval database): {:.5f}'.format(map_))
+    map_ = cal_map(database_code, query_code_arr, database_label.numpy(), test_label, 5000)
+    logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_))
+    t_map = cal_map(database_code, adv_code_arr, database_label.numpy(), target_label_arr, 5000)
+    logger.log('THA t-MAP(retrieval database): {:.5f}'.format(t_map))
+    t_map = cal_map(database_code, prototype_code_arr, database_label.numpy(), target_label_arr, 5000)
+    logger.log('Theory t-MAP(retrieval database): {:.5f}'.format(t_map))

@@ -8,7 +8,7 @@ from utils.data_provider import get_data_label
 def cal_pr_or_topn(dataset, hash_method, backbone, bit, data_dir='../data', curve_type='pr', **kwargs):
     func = cal_pr if curve_type == 'pr' else cal_top_n
 
-    method_tuple = ('Original', 'P2P', 'DHTA', 'TADH',  'ProsGAN', 'HAG', 'SDHA', 'CentralAttack')
+    method_tuple = ('Original', 'P2P', 'DHTA', 'THA',  'ProS-GAN', 'HAG', 'SDHA', 'DHCA')
     attack_model = '{}_{}_{}_{}'.format(dataset, hash_method, backbone, bit)
 
     log_path = 'log/{}'.format(attack_model)

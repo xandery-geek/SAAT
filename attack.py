@@ -13,7 +13,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--method', dest='method', default='hag', help='name of attack method')
+    parser.add_argument('--method', dest='method', default='central', help='name of attack method')
     parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
                         choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
                         help='name of the dataset')
@@ -27,7 +27,9 @@ def parser_arguments():
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
-    parser.add_argument('--iteration', dest='iteration', type=int, default=1000, help='number of images in one batch')
+    parser.add_argument('--iteration', dest='iteration', type=int, default=2000, help='number of images in one batch')
+    parser.add_argument('--retrieve', dest='retrieve', type=str2bool, default=False, help='retrieve images')
+    parser.add_argument('--sample', dest='sample', type=str2bool, default=False, help='sample adversarial examples')
     parser.add_argument('--adv', dest='adv', type=str2bool, default='False',
                         help='load model through adversarial training')
     parser.add_argument('--adv_method', dest='adv_method', type=str, default='cat', choices=['cat', 'atrdh'],
@@ -44,7 +46,7 @@ if __name__ == '__main__':
     if args.method == 'hag':
         hag(args)
     elif args.method == 'sdha':
-        # args.iteration = 1500
+        args.iteration = 1500
         sdha(args)
     elif args.method == 'dhta':
         dhta(args)
