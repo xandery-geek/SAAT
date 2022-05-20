@@ -5,8 +5,10 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from utils.data_provider import get_data_loader, get_classes_num
-from utils.util import import_class, get_batch, retrieve_images, str2bool
+from utils.util import import_class, get_batch, str2bool
 from utils.hamming_matching import cal_map
+from model.util import retrieve_images
+
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 

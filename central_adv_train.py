@@ -112,7 +112,7 @@ def dhcat(args, epsilon=8 / 255.0):
             center_code = hash_center_code(y, U_ben, train_label, args.bit)
 
             loss_hash_ben = model.loss_function(ben_code, y, index)
-            loss_adv = - torch.mean((adv_code * center_code))
+            loss_adv = - adv_loss(adv_code, center_code)
             loss_qua = torch.mean((adv_code - torch.sign(adv_code)) ** 2)
             loss = args.p_lambda * loss_adv + args.p_mu * loss_qua + loss_hash_ben
             loss.backward()

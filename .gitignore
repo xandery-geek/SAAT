@@ -3,6 +3,8 @@ log/
 checkpoint/
 tmp/
 documents/
+
 *.iml
+*.sh
 .DS_Store
 tmp*
