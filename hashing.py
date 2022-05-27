@@ -90,7 +90,7 @@ class Hashing(object):
             avg_loss += loss.item()
 
         avg_loss /= batch_number
-        self.print_log("loss: {}".format(avg_loss))
+        self.print_log("loss: {:.5f}".format(avg_loss))
         return avg_loss
 
     def adjust_learning_rate(self, epoch, total_epoch):
@@ -145,7 +145,7 @@ class Hashing(object):
         retrieval_hash_codes, retrieval_labels = self.generate_code('database')
 
         map_val = cal_map(retrieval_hash_codes, test_hash_codes, retrieval_labels, test_labels, 5000)
-        self.print_log("Test MAP: {}".format(map_val))
+        self.print_log("Test MAP: {:.5f}".format(map_val))
 
     def retrieve(self, batch=0, top=10):
         self.print_log('>>>Retrieve relevant images<<<')
@@ -202,7 +202,7 @@ def parser_arguments():
     parser.add_argument('--test_label', dest='test_label', default='test_label.txt',
                         help='the label list of test images')
     # model
-    parser.add_argument('--hash_method', dest='method', default='DPH', choices=['DPH', 'DPSH', 'HashNet'],
+    parser.add_argument('--hash_method', dest='method', default='DPH', choices=['DPH', 'DPSH', 'CSQ', 'HashNet'],
                         help='deep hashing methods')
     parser.add_argument('--backbone', dest='backbone', default='AlexNet',
                         choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50', 'ResNet101'],
