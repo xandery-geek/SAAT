@@ -20,13 +20,13 @@ def parser_arguments():
     parser.add_argument('--data_dir', dest='data_dir', default='../data/', help='path of the dataset')
     parser.add_argument('--device', dest='device', type=str, default='0', help='gpu device')
     parser.add_argument('--hash_method', dest='hash_method', default='DPH',
-                        choices=['DPH', 'DPSH', 'HashNet'],
+                        choices=['DPH', 'DPSH', 'CSQ', 'HashNet'],
                         help='deep hashing methods')
     parser.add_argument('--backbone', dest='backbone', default='AlexNet',
                         choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50', 'ResNet101'],
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
-    parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
+    parser.add_argument('--batch_size', dest='batch_size', type=int, default=128, help='number of images in one batch')
     parser.add_argument('--iteration', dest='iteration', type=int, default=2000, help='number of images in one batch')
     parser.add_argument('--retrieve', dest='retrieve', type=str2bool, default=False, help='retrieve images')
     parser.add_argument('--sample', dest='sample', type=str2bool, default=False, help='sample adversarial examples')

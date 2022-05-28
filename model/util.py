@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import numpy as np
 from utils.data_provider import HashingDataset
@@ -46,20 +47,37 @@ def generate_code_ordered(model, data_loader, num_data, bit, num_class):
 
 
 def get_database_code(model, dataloader, attack_model):
+    model_path = 'checkpoint/{}.pth'.format(attack_model)
     database_path = 'log/{}'.format(attack_model)
     database_hash_file = os.path.join(database_path, 'database_hashcode.npy')
     database_labels_file = os.path.join(database_path, 'database_label.npy')
     if os.path.exists(database_hash_file) and os.path.exists(database_labels_file):
-        database_code = np.load(database_hash_file)
-        database_labels = np.load(database_labels_file)
-    else:
-        print("generate database code")
-        database_code, database_labels = generate_code(model, dataloader)
-        if not os.path.exists(database_path):
-            os.makedirs(database_path)
-        np.save(database_hash_file, database_code)
-        np.save(database_labels_file, database_labels)
+        # check time stamp
+        code_stamp = get_time_stamp(database_hash_file)
+        label_stamp = get_time_stamp(database_labels_file)
+        model_stamp = get_time_stamp(model_path)
+
+        if model_stamp < code_stamp and model_stamp < label_stamp:
+            print("Loading")
+            print("hash code: {}".format(database_hash_file))
+            print("label: {}".format(database_labels_file))
+
+            database_code = np.load(database_hash_file)
+            database_labels = np.load(database_labels_file)
+            return database_code, database_labels
+
+    print("Generating database code")
+    database_code, database_labels = generate_code(model, dataloader)
+    if not os.path.exists(database_path):
+        os.makedirs(database_path)
+    np.save(database_hash_file, database_code)
+    np.save(database_labels_file, database_labels)
     return database_code, database_labels
+
+
+def get_time_stamp(file):
+    stamp = os.stat(file).st_mtime
+    return time.localtime(stamp)
 
 
 def get_alpha(cur_epoch, epochs):

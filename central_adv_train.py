@@ -86,7 +86,10 @@ def dhcat(args, epsilon=8 / 255.0):
     model.train()
     U_ben = torch.zeros(num_train, args.bit).cuda()
     U_ben.data = train_code.data
-    model.U.data = train_code.data
+
+    if hasattr(model, 'U') and hasattr(model, 'Y'):
+        model.U.data = train_code.data
+        model.Y.data = train_label.data
 
     optimizer = torch.optim.SGD(model.parameters(), lr=0.05, weight_decay=1e-5)
     lr_steps = args.epochs * len(train_loader)
@@ -123,6 +126,8 @@ def dhcat(args, epsilon=8 / 255.0):
             if it % 50 == 0:
                 print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, loss: {:.5f}'.format(
                         epoch, it, scheduler.get_last_lr()[0], loss))
+                print("ben: {:.5f}, adv: {:.5f}, qua: {:.5f}".format(loss_hash_ben.item(),
+                                                                     loss_adv.item(), loss_qua.item()))
 
         print('Epoch: %3d/%3d\tTrain_loss: %3.5f \n' % (epoch, args.epochs, epoch_loss / len(train_loader)))
 

@@ -11,19 +11,20 @@ class CSQ(BaseHashModel):
     - https://github.com/yuanli2333/Hadamard-Matrix-for-hashing
     - https://github.com/swuxyj/DeepHash-pytorch
     """
-    def __init__(self, dataset, training=True, **kwargs):
+    def __init__(self, dataset, **kwargs):
         super().__init__(**kwargs)
         self.model_name = '{}_CSQ_{}_{}'.format(dataset, self.backbone, self.bit)
         self.model = self._build_graph()
 
+        self.p_lambda = 0.05
         self.is_single_label = dataset not in {"NUS-WIDE", "MS-COCO", "FLICKR-25K"}
-        self.hash_targets = self.get_hash_targets(kwargs['num_class'], self.bit).cuda()
-        self.random_center = torch.randint(2, (self.bit, )).float().cuda()
-        self.random_center = self.random_center * 2 - 1
         self.criterion = torch.nn.BCELoss().cuda()
 
-        if training:
-            self.p_lambda = 0.05
+        # init hash center
+        self.register_buffer('hash_targets', torch.randint(2, (kwargs['num_class'], self.bit)))
+        self.register_buffer('random_center', torch.randint(2, (self.bit, )))
+        self.hash_targets = self.get_hash_targets(kwargs['num_class'], self.bit).float().cuda()
+        self.random_center = (self.random_center * 2 - 1).float().cuda()
 
     @staticmethod
     def get_hash_targets(n_class, bit):

@@ -12,7 +12,7 @@ def parser_arguments():
                         help='name of the dataset')
     parser.add_argument('--data_dir', dest='data_dir', default='../data/', help='path of the dataset')
     parser.add_argument('--device', dest='device', type=str, default='0', help='gpu device')
-    parser.add_argument('--hash_method', dest='hash_method', default='DPH', choices=['DPH', 'DPSH', 'HashNet'],
+    parser.add_argument('--hash_method', dest='hash_method', default='DPH', choices=['DPH', 'DPSH', 'CSQ', 'HashNet'],
                         help='deep hashing methods')
     parser.add_argument('--backbone', dest='backbone', default='AlexNet',
                         choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50', 'ResNet101'],
