@@ -3,6 +3,7 @@ log/
 checkpoint/
 tmp/
 documents/
+__pycache__/
 
 *.iml
 *.sh

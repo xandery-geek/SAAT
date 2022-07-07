@@ -223,7 +223,7 @@ def parser_arguments():
                         help='if continue training, load the latest model: 1: true, 0: false')
     parser.add_argument('--checkpoint_dir', dest='save', default='checkpoint', help='models are saved here')
     parser.add_argument('--n_epochs', dest='n_epochs', type=int, default=100, help='number of epoch')
-    parser.add_argument('--learning_rate', dest='lr', type=float, default=0.01, help='initial learning rate for sgd')
+    parser.add_argument('--learning_rate', dest='lr', type=float, default=0.01, help='initial learning rate for SGD')
     parser.add_argument('--momentum', dest='momentum', type=float, default=0.9, help='momentum for SGD')
     parser.add_argument('--weight_decay', dest='wd', type=float, default=5e-4, help='weight decay for SGD')
 
