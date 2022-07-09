@@ -69,33 +69,13 @@ def dhta(args, num_target=9, epsilon=0.032):
     database_labels_str = np.array(database_labels_str, dtype=str)
 
     # calculate target label
-    target_label_path = 'log/target_label_dhta_{}.txt'.format(args.dataset)
+    target_label_path = 'log/target_label_{}.txt'.format(args.dataset)
 
     if os.path.exists(target_label_path):
         print("Loading target label from {}".format(target_label_path))
         target_labels = np.loadtxt(target_label_path, dtype=np.int)
     else:
-        print("Generating target label")
-        candidate_labels_count = collections.Counter(database_labels_str)
-        candidate_labels_count = pd.DataFrame.from_dict(candidate_labels_count, orient='index').reset_index()
-        candidate_labels = candidate_labels_count[candidate_labels_count[0] > num_target]['index']
-        candidate_labels = np.array(candidate_labels, dtype=str)
-
-        candidate_labels_int = [list(candidate_labels[i]) for i in range(len(candidate_labels))]
-        candidate_labels_int = np.array(candidate_labels_int, dtype=np.int)
-
-        target_labels = []
-        similarity = np.dot(test_label, candidate_labels_int.T)
-        for i in range(num_test):
-            s = similarity[i]
-            candidate_index = np.where(s == 0)
-            random_index = np.random.choice(candidate_index[0])
-            target_label = candidate_labels_int[random_index]
-            target_label = np.array(target_label, dtype=int)
-            target_labels.append(target_label)
-
-        target_labels = np.array(target_labels, dtype=np.int)
-        np.savetxt(target_label_path, target_labels, fmt="%d")
+        raise ValueError('Please generate target_label before attack!')
 
     target_labels_str = [''.join(label) for label in target_labels.astype(str)]
 

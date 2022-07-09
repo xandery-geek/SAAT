@@ -22,7 +22,7 @@ def cal_hamming_dis(b1, b2):
     return 0.5 * (k - b1 @ b2.transpose(0, 1))
 
 
-def surrogate_function(h_hat, h, idx, sigma=5, z=0.5):
+def surrogate_func(h_hat, h, idx, sigma=5, z=0.5):
     batch_size = h.size(0)
     similarity = g_similarity[idx]  # b * n
 
@@ -39,15 +39,34 @@ def surrogate_function(h_hat, h, idx, sigma=5, z=0.5):
     return - loss / batch_size
 
 
-def sdha_loss(x_hat, x, h_hat, h, idx, alpha=25.):
+def surrogate_func_targeted(h_hat, h, idx, sigma=10, z=-0.3):
+    batch_size = h.size(0)
+    similarity = g_similarity[idx]  # b * n
+
+    loss = 0
+    for i in range(batch_size):
+        q = h_hat[i]  # 1 * k
+        r_idx = torch.where(similarity[i] > 0)[0]
+        r = g_code[r_idx]  # n_{u} * k
+        r = r.sign()
+        dis = 0.5 * torch.sum(torch.abs(q - r) * torch.sigmoid(-sigma * q * r), dim=1)
+        w = torch.pow(cal_hamming_dis(q.sign(), r) + 1e-8, -z)
+        loss += torch.mean(dis * w)
+    return loss / batch_size
+
+
+def sdha_loss(x_hat, x, h_hat, h, idx, alpha=25., targeted=False):
     k = h.size(1)
     alpha = alpha / k
     mse_loss = torch.nn.functional.mse_loss(x_hat, x)
-    surrogate_loss = surrogate_function(h_hat, h, idx)
+    if not targeted:
+        surrogate_loss = surrogate_func(h_hat, h, idx)
+    else:
+        surrogate_loss = surrogate_func_targeted(h_hat, h, idx)
     return mse_loss + alpha * surrogate_loss
 
 
-def attack(model, x, idx, epochs=100, epsilon=8/255., record_loss=False):
+def attack(model, x, idx, targeted=False, epochs=100, epsilon=8 / 255., record_loss=False):
     x = x.cuda()
     h = model(x)
     x, h = x.detach(), h.detach()
@@ -62,7 +81,7 @@ def attack(model, x, idx, epochs=100, epsilon=8/255., record_loss=False):
         optimizer.zero_grad()
         alpha = get_alpha(epoch, epochs)
         h_hat = model(x_hat, alpha)
-        loss = sdha_loss(x_hat, x, h_hat, h, idx)
+        loss = sdha_loss(x_hat, x, h_hat, h, idx, targeted=targeted)
         loss.backward()
         optimizer.step()
 
@@ -92,10 +111,26 @@ def theory_attack(model, x, idx):
     return h.cpu().sign(), h_hat.cpu()
 
 
+def theory_attack_targeted(model, x, idx):
+    x = x.cuda()
+    h = model(x)
+    h = h.detach()
+    batch_size = h.size(0)
+    similarity = g_similarity[idx]  # b * n
+
+    h_hat = torch.zeros(h.size())
+    for i in range(batch_size):
+        r_idx = torch.where(similarity[i] > 0)[0]
+        r = g_code[r_idx]  # n_{u} * k
+        r = r.sign()
+        h_hat[i] = torch.mean(r, dim=0).sign()
+    return h.cpu().sign(), h_hat.cpu()
+
+
 g_code, g_similarity = torch.tensor(0), torch.tensor(0)
 
 
-def sdha(args):
+def sdha(args, targeted=True):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
 
     method = 'SDHA'
@@ -105,26 +140,43 @@ def sdha(args):
     model = load_model(model_path)
 
     # load dataset
-    database_loader, num_database = get_data_loader(args.data_dir, args.dataset, 'database',
-                                                    args.batch_size, shuffle=False)
-    test_loader, num_test = get_data_loader(args.data_dir, args.dataset, 'test',
-                                            args.batch_size, shuffle=False)
+    database_loader, _ = get_data_loader(args.data_dir, args.dataset, 'database',
+                                         args.batch_size, shuffle=False)
+    train_loader, num_train = get_data_loader(args.data_dir, args.dataset, 'train',
+                                              args.batch_size, shuffle=False)
+    test_loader, _ = get_data_loader(args.data_dir, args.dataset, 'test',
+                                     args.batch_size, shuffle=False)
 
+    train_label = get_data_label(args.data_dir, args.dataset, 'train')
     test_label = get_data_label(args.data_dir, args.dataset, 'test')
 
-    # generate global code and label
+    # generate global code
     global g_code, g_similarity
-    g_code = torch.zeros(num_test, args.bit).float().cuda()
-    label = torch.from_numpy(test_label).float().cuda()
-    g_similarity = label @ label.transpose(0, 1)  # n * n
+    g_code = torch.zeros(num_train, args.bit).float().cuda()
 
-    for x, _, idx in test_loader:
+    for x, _, idx in train_loader:
         g_code[idx] = model(x.cuda()).detach()
+
+    # generate global similarity matrix
+    train_label_tensor = torch.from_numpy(train_label).float().cuda()
+    if not targeted:
+        test_label_tensor = torch.from_numpy(test_label).float().cuda()
+        g_similarity = test_label_tensor @ train_label_tensor.transpose(0, 1)  # N_test * N_train
+    else:
+        # load target label
+        target_label_path = 'log/target_label_{}.txt'.format(args.dataset)
+        if os.path.exists(target_label_path):
+            target_label = np.loadtxt(target_label_path, dtype=np.int)
+        else:
+            raise ValueError('Please generate target_label before attack!')
+        target_label_tensor = torch.from_numpy(target_label).float().cuda()
+        g_similarity = target_label_tensor @ train_label_tensor.transpose(0, 1)  # N_test * N_train
 
     # attack
     query_code_arr, adv_code_arr = None, None
-    for i, (x, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
-        h, h_hat, _ = attack(model, x, idx, epochs=args.iteration)
+    for _, (x, _, idx) in enumerate(tqdm(test_loader, ncols=50)):
+        # h, h_hat, _ = attack(model, x, idx, targeted=targeted, epochs=100)
+        h, h_hat = theory_attack_targeted(model, x, idx)
         # h, h_hat = theory_attack(model, x, idx)
         query_code_arr = h.numpy() if query_code_arr is None else np.concatenate((query_code_arr, h.numpy()), axis=0)
         adv_code_arr = h_hat.numpy() if adv_code_arr is None else np.concatenate((adv_code_arr, h_hat.numpy()), axis=0)
@@ -135,9 +187,14 @@ def sdha(args):
     np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), adv_code_arr)
 
     # calculate map
-    ori_map = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
-    adv_map = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
-
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
-    logger.log('SDHA MAP(retrieval database): {:.5f}'.format(adv_map))
+
+    ori_map = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
     logger.log('Ori MAP(retrieval database): {:.5f}'.format(ori_map))
+
+    if not targeted:
+        adv_map = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
+        logger.log('SDHA MAP(retrieval database): {:.5f}'.format(adv_map))
+    else:
+        adv_map = cal_map(database_code, adv_code_arr, database_label, target_label, 5000)
+        logger.log('SDHA t-MAP(retrieval database): {:.5f}'.format(adv_map))

@@ -1,3 +1,4 @@
+import numpy as np
 import torch.nn.functional as F
 import torch.nn as nn
 from utils.data_provider import *
@@ -39,26 +40,29 @@ class CircleLoss(nn.Module):
         return loss
 
 
-def select_target_label(data_labels, target_labels):
+def select_target_label(data_labels, unique_label):
     """
     select label which is different form original label
     :param data_labels:
-    :param target_labels: candidate target label
+    :param unique_label: candidate target label
     :return:
     """
-    select_index = None
-    candidate_index = np.array(range(target_labels.size(0)))
-    for label in data_labels:
-        label_index = []
-        for i in range(len(target_labels)):
-            if torch.sum(label * target_labels[i]) > 0 or torch.all(target_labels[i] == 0):
-                label_index.append(i)
-        index = np.random.choice(np.delete(candidate_index, np.array(label_index)), size=1)
-        select_index = index if select_index is None else np.concatenate((select_index, index))
-    return target_labels.index_select(0, torch.from_numpy(select_index))
+
+    # remove zero label
+    target_label_sum = np.sum(unique_label, axis=1)
+    zero_label_idx = np.where(target_label_sum == 0)[0]
+    unique_label = np.delete(unique_label, zero_label_idx, axis=0)
+
+    target_idx = []
+    similarity = data_labels @ unique_label.transpose()
+    for i, _ in enumerate(data_labels):
+        s = similarity[i]
+        candidate_idx = np.where(s == 0)[0]
+        target_idx.append(np.random.choice(candidate_idx, size=1)[0])
+    return unique_label[np.array(target_idx)]
 
 
-def similarity(batch_feature, features, batch_label, labels, bit):
+def similarity_pn(batch_feature, features, batch_label, labels, bit):
     similarity_matrix = batch_feature @ features.transpose(1, 0)
     similarity_matrix = similarity_matrix / bit
     label_matrix = (batch_label.mm(labels.t()) > 0)
@@ -125,11 +129,10 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
 
     test_label = get_data_label(args.data_dir, args.dataset, 'test')
     database_label = get_data_label(args.data_dir, args.dataset, 'database')
-
-    database_label = torch.from_numpy(database_label).float()
-    target_labels = database_label.unique(dim=0)
-
     database_code, _ = get_database_code(model, database_loader, attack_model)
+
+    # get unique label
+    unique_label = np.unique(database_label, axis=0)
 
     if not args.adv:
         pnet_path = 'checkpoint/PrototypeNet_{}.pth'.format(attack_model)
@@ -154,12 +157,12 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
 
         for epoch in range(epochs):
             for i in range(steps):
-                select_index = np.random.choice(range(target_labels.size(0)), size=args.batch_size)
-                batch_target_label = target_labels.index_select(0, torch.from_numpy(select_index)).cuda()
+                select_index = np.random.choice(range(unique_label.size(0)), size=args.batch_size)
+                batch_target_label = unique_label.index_select(0, torch.from_numpy(select_index)).cuda()
 
                 pnet_optimizer.zero_grad()
                 target_hash_label = pnet(batch_target_label)
-                sp, sn = similarity(target_hash_label, train_code, batch_target_label, train_label, args.bit)
+                sp, sn = similarity_pn(target_hash_label, train_code, batch_target_label, train_label, args.bit)
                 logloss = circle_loss(sp, sn) / args.batch_size
                 regterm = (torch.sign(target_hash_label) - target_hash_label).pow(2).sum() / (1e4 * args.batch_size)
                 loss = logloss + regterm
@@ -174,17 +177,13 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
         torch.save(pnet, pnet_path)
         pnet.eval()
 
-    target_label_path = 'log/target_label_tha_{}.txt'.format(args.dataset)
+    target_label_path = 'log/target_label_{}.txt'.format(args.dataset)
     if os.path.exists(target_label_path):
-        target_label_arr = np.loadtxt(target_label_path, dtype=np.int)
+        target_label = np.loadtxt(target_label_path, dtype=np.int)
     else:
         print("Generating target labels")
-        target_label_arr = np.zeros([num_test, num_classes])
-        for data in test_loader:
-            _, label, index = data
-            batch_target_label = select_target_label(label, target_labels)
-            target_label_arr[index.numpy(), :] = batch_target_label.numpy()
-        np.savetxt(target_label_path, target_label_arr, fmt="%d")
+        target_label = select_target_label(test_label, unique_label)
+        np.savetxt(target_label_path, target_label, fmt="%d")
 
     adv_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
     query_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
@@ -195,7 +194,7 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
         query = query.cuda()
         batch_size_ = index.size(0)
 
-        batch_target_label = target_label_arr[index.numpy(), :]
+        batch_target_label = target_label[index.numpy(), :]
         batch_target_label = torch.from_numpy(batch_target_label).float().cuda()
 
         batch_prototype_code = pnet(batch_target_label)
@@ -213,13 +212,13 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('perceptibility: {:.5f}'.format(torch.sqrt(perceptibility / num_test)))
 
-    map_ = cal_map(database_code, adv_code_arr, database_label.numpy(), test_label, 5000)
+    map_ = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
     logger.log('THA MAP(retrieval database): {:.5f}'.format(map_))
-    map_ = cal_map(database_code, prototype_code_arr, database_label.numpy(), test_label, 5000)
+    map_ = cal_map(database_code, prototype_code_arr, database_label, test_label, 5000)
     logger.log('Theory MAP(retrieval database): {:.5f}'.format(map_))
-    map_ = cal_map(database_code, query_code_arr, database_label.numpy(), test_label, 5000)
+    map_ = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
     logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_))
-    t_map = cal_map(database_code, adv_code_arr, database_label.numpy(), target_label_arr, 5000)
+    t_map = cal_map(database_code, adv_code_arr, database_label, target_label, 5000)
     logger.log('THA t-MAP(retrieval database): {:.5f}'.format(t_map))
-    t_map = cal_map(database_code, prototype_code_arr, database_label.numpy(), target_label_arr, 5000)
+    t_map = cal_map(database_code, prototype_code_arr, database_label, target_label, 5000)
     logger.log('Theory t-MAP(retrieval database): {:.5f}'.format(t_map))

@@ -27,7 +27,7 @@ def parser_arguments():
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=128, help='number of images in one batch')
-    parser.add_argument('--iteration', dest='iteration', type=int, default=2000, help='number of images in one batch')
+    parser.add_argument('--iteration', dest='iteration', type=int, default=100, help='number of images in one batch')
     parser.add_argument('--retrieve', dest='retrieve', type=str2bool, default=False, help='retrieve images')
     parser.add_argument('--sample', dest='sample', type=str2bool, default=False, help='sample adversarial examples')
     parser.add_argument('--adv', dest='adv', type=str2bool, default='False',
@@ -44,6 +44,7 @@ if __name__ == '__main__':
 
     print("Current Method: {}".format(args.method))
     if args.method == 'hag':
+        args.iteration = 2000
         hag(args)
     elif args.method == 'sdha':
         args.iteration = 1500
@@ -53,10 +54,8 @@ if __name__ == '__main__':
     elif args.method == 'p2p':
         dhta(args, num_target=1)
     elif args.method == 'tha':
-        args.iteration = 100
         tha(args)
     elif args.method == 'central':
-        args.iteration = 100
         central_attack(args)
     else:
         raise NotImplementedError("Method {} not implemented".format(args.method))

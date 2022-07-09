@@ -4,7 +4,7 @@ import numpy as np
 from utils.data_provider import get_data_loader, get_classes_num, get_data_label
 from model.util import load_model, generate_code_ordered
 from utils.util import check_dir
-from model.attack_model.tha import PrototypeNet, CircleLoss, similarity
+from model.attack_model.tha import PrototypeNet, CircleLoss, similarity_pn
 
 
 def cal_similarity(batch_label, train_label):
@@ -99,7 +99,7 @@ def atrdh(args, epsilon=8 / 255.0, iteration=7):
             set_requires_grad(pnet, True)
             pnet_optimizer.zero_grad()
             batch_target_code = pnet(batch_target_label)
-            sp, sn = similarity(batch_target_code, train_code, batch_target_label, train_label, args.bit)
+            sp, sn = similarity_pn(batch_target_code, train_code, batch_target_label, train_label, args.bit)
             logloss = circle_loss(sp, sn) / batch_size_
             regterm = (torch.sign(batch_target_code) - batch_target_code).pow(2).sum() / (1e4 * batch_size_)
             loss_p = logloss + regterm
