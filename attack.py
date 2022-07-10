@@ -27,8 +27,9 @@ def parser_arguments():
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=128, help='number of images in one batch')
-    parser.add_argument('--iteration', dest='iteration', type=int, default=100, help='number of images in one batch')
+    parser.add_argument('--iteration', dest='iteration', type=int, default=100, help='attack iterations')
     parser.add_argument('--retrieve', dest='retrieve', type=str2bool, default=False, help='retrieve images')
+    parser.add_argument('--targeted', dest='targeted', type=str2bool, default=False, help='targeted attack')
     parser.add_argument('--sample', dest='sample', type=str2bool, default=False, help='sample adversarial examples')
     parser.add_argument('--adv', dest='adv', type=str2bool, default='False',
                         help='load model through adversarial training')
@@ -48,7 +49,7 @@ if __name__ == '__main__':
         hag(args)
     elif args.method == 'sdha':
         args.iteration = 1500
-        sdha(args)
+        sdha(args, targeted=args.targeted)
     elif args.method == 'dhta':
         dhta(args)
     elif args.method == 'p2p':
@@ -56,6 +57,6 @@ if __name__ == '__main__':
     elif args.method == 'tha':
         tha(args)
     elif args.method == 'central':
-        central_attack(args)
+        central_attack(args, targeted=args.targeted)
     else:
         raise NotImplementedError("Method {} not implemented".format(args.method))

@@ -157,9 +157,9 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
 
         for epoch in range(epochs):
             for i in range(steps):
-                select_index = np.random.choice(range(unique_label.size(0)), size=args.batch_size)
-                batch_target_label = unique_label.index_select(0, torch.from_numpy(select_index)).cuda()
-
+                select_index = np.random.choice(range(unique_label.shape[0]), size=args.batch_size)
+                batch_target_label = unique_label[select_index]
+                batch_target_label = torch.from_numpy(batch_target_label).float().cuda()
                 pnet_optimizer.zero_grad()
                 target_hash_label = pnet(batch_target_label)
                 sp, sn = similarity_pn(target_hash_label, train_code, batch_target_label, train_label, args.bit)
@@ -212,12 +212,14 @@ def tha(args, epsilon=8 / 255., lr=1e-4):
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('perceptibility: {:.5f}'.format(torch.sqrt(perceptibility / num_test)))
 
+    map_ = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
+    logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_))
+    # MAP
     map_ = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
     logger.log('THA MAP(retrieval database): {:.5f}'.format(map_))
     map_ = cal_map(database_code, prototype_code_arr, database_label, test_label, 5000)
     logger.log('Theory MAP(retrieval database): {:.5f}'.format(map_))
-    map_ = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
-    logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_))
+    # t-MAP
     t_map = cal_map(database_code, adv_code_arr, database_label, target_label, 5000)
     logger.log('THA t-MAP(retrieval database): {:.5f}'.format(t_map))
     t_map = cal_map(database_code, prototype_code_arr, database_label, target_label, 5000)

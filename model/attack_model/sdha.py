@@ -130,7 +130,7 @@ def theory_attack_targeted(model, x, idx):
 g_code, g_similarity = torch.tensor(0), torch.tensor(0)
 
 
-def sdha(args, targeted=True):
+def sdha(args, targeted=False):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
 
     method = 'SDHA'
@@ -175,8 +175,8 @@ def sdha(args, targeted=True):
     # attack
     query_code_arr, adv_code_arr = None, None
     for _, (x, _, idx) in enumerate(tqdm(test_loader, ncols=50)):
-        # h, h_hat, _ = attack(model, x, idx, targeted=targeted, epochs=100)
-        h, h_hat = theory_attack_targeted(model, x, idx)
+        h, h_hat, _ = attack(model, x, idx, targeted=targeted, epochs=args.iteration)
+        # h, h_hat = theory_attack_targeted(model, x, idx)
         # h, h_hat = theory_attack(model, x, idx)
         query_code_arr = h.numpy() if query_code_arr is None else np.concatenate((query_code_arr, h.numpy()), axis=0)
         adv_code_arr = h_hat.numpy() if adv_code_arr is None else np.concatenate((adv_code_arr, h_hat.numpy()), axis=0)

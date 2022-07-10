@@ -6,35 +6,40 @@ from utils.data_provider import *
 from utils.hamming_matching import *
 from utils.util import Logger, str2bool
 
-
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 
-def adv_loss(noisy_output, target_hash):
-    # loss = torch.mean(noisy_output * target_hash)
-    sim = noisy_output * target_hash
+def adv_loss(noisy_output, target_code):
+    # loss = torch.mean(noisy_output * target_code)
+    sim = noisy_output * target_code
     w = (sim > -0.5).int()
     sim = w * (sim + 2) * sim
     loss = torch.mean(sim)
     return loss
 
+def adv_loss_targeted(noisy_output, target_code):
+    sim = noisy_output * target_code
+    w = (sim < 0.5).int()
+    sim = w * (sim + 2) * sim
+    loss = torch.mean(sim)
+    return -loss
 
-def hash_adv(model, query, target_hash, epsilon, step=1.0, iteration=100, randomize=False, record_loss=False):
+
+def hash_adv(model, query, target_code, epsilon, step=1.0, iteration=100, targeted=False, record_loss=False):
+    # random initialization
     delta = torch.zeros_like(query).cuda()
-    if randomize:
-        delta.uniform_(-epsilon, epsilon)
-        delta.data = (query.data + delta.data).clamp(0, 1) - query.data
+    delta.uniform_(-epsilon, epsilon)
+    delta.data = (query.data + delta.data).clamp(0, 1) - query.data
     delta.requires_grad = True
 
+    loss_func = adv_loss_targeted if targeted else adv_loss
     loss_list = [] if record_loss else None
     for i in range(iteration):
         alpha = get_alpha(i, iteration)
         noisy_output = model(query + delta, alpha)
-        loss = adv_loss(noisy_output, target_hash.detach())
+        loss = loss_func(noisy_output, target_code.detach())
         loss.backward()
 
-        # delta.data = delta - step * delta.grad.detach()
-        # delta.data = delta - step * delta.grad.detach() / (torch.norm(delta.grad.detach(), 2) + 1e-9)
         delta.data = delta - step / 255 * torch.sign(delta.grad.detach())
         delta.data = delta.data.clamp(-epsilon, epsilon)
         delta.data = (query.data + delta.data).clamp(0, 1) - query.data
@@ -42,6 +47,7 @@ def hash_adv(model, query, target_hash, epsilon, step=1.0, iteration=100, random
 
         if loss_list is not None and (i + 1) % (iteration // 10) == 0:
             loss_list.append(round(loss.item(), 4))
+
     if loss_list is not None:
         print("loss :{}".format(loss_list))
     return query + delta.detach()
@@ -54,13 +60,13 @@ def hash_center_code(label, train_code, train_label, bit):
         w = torch.sum(l * train_label, dim=1) / torch.sum(torch.sign(l + train_label), dim=1)  # N
         w1 = w.repeat(bit, 1).t()  # N*bit
         w2 = 1 - torch.sign(w1)  # N*bit, weights for negative samples
-        c = w2.sum() / bit   # number of dissimilar samples
+        c = w2.sum() / bit  # number of dissimilar samples
         w1 = 1 - w2  # weights for positive samples
         code[i] = torch.sign(torch.sum(c * w1 * train_code - (train_label.size(0) - c) * w2 * train_code, dim=0))
     return code
 
 
-def central_attack(args, epsilon=8/255.):
+def central_attack(args, epsilon=8 / 255., targeted=False):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     method = 'DHCA'
     # load model
@@ -69,10 +75,10 @@ def central_attack(args, epsilon=8/255.):
     model = load_model(model_path)
 
     # load dataset
-    database_loader, num_database = get_data_loader(args.data_dir, args.dataset, 'database',
-                                                    args.batch_size, shuffle=False)
-    train_loader, num_train = get_data_loader(args.data_dir, args.dataset, 'train',
-                                              args.batch_size, shuffle=True)
+    database_loader, _ = get_data_loader(args.data_dir, args.dataset, 'database',
+                                         args.batch_size, shuffle=False)
+    train_loader, _ = get_data_loader(args.data_dir, args.dataset, 'train',
+                                      args.batch_size, shuffle=True)
     test_loader, num_test = get_data_loader(args.data_dir, args.dataset, 'test',
                                             args.batch_size, shuffle=False)
 
@@ -83,28 +89,40 @@ def central_attack(args, epsilon=8/255.):
 
     # generate hashcode and labels for training set
     train_code, train_label = generate_code(model, train_loader)
-    train_code, train_label = torch.from_numpy(train_code), torch.from_numpy(train_label)
-    train_code, train_label = train_code.cuda(), train_label.cuda()
+    train_code, train_label = torch.from_numpy(train_code).cuda(), torch.from_numpy(train_label).cuda()
 
-    query_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
-    adv_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
-    center_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
+    # load target label for targeted attack
+    if targeted:
+        target_label_path = 'log/target_label_{}.txt'.format(args.dataset)
+        if os.path.exists(target_label_path):
+            target_label = np.loadtxt(target_label_path, dtype=np.int)
+        else:
+            raise ValueError('Please generate target_label before attack!')
+
     perceptibility = 0
-
-    for it, data in enumerate(tqdm(test_loader, ncols=50)):
-        query, label, index = data
+    query_code_arr, adv_code_arr, center_code_arr = None, None, None
+    for it, (query, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
         query, label = query.cuda(), label.cuda()
-        batch_size_ = index.size(0)
+        batch_size_ = query.size(0)
 
-        center_code = hash_center_code(label, train_code, train_label, args.bit)
-        adv_query = hash_adv(model, query, center_code, epsilon, iteration=args.iteration)
+        if not targeted:
+            target_l = label
+        else:
+            target_l = torch.from_numpy(target_label[idx]).cuda()
+
+        center_code = hash_center_code(target_l, train_code, train_label, args.bit)
+        adv_query = hash_adv(model, query, center_code, epsilon, iteration=args.iteration, targeted=targeted)
 
         perceptibility += F.mse_loss(query, adv_query).data * batch_size_
-        query_code = model(query).sign().cpu().data.numpy()
-        adv_code = model(adv_query).sign().cpu().data.numpy()
-        query_code_arr[index.numpy(), :] = query_code
-        adv_code_arr[index.numpy(), :] = adv_code
-        center_code_arr[index.numpy(), :] = center_code.cpu().data.numpy()
+
+        query_code = model(query).sign().cpu().detach().numpy()
+        adv_code = model(adv_query).sign().cpu().detach().numpy()
+        center_code = center_code.cpu().detach().numpy()
+
+        query_code_arr = query_code if query_code_arr is None else np.concatenate((query_code_arr, query_code), axis=0)
+        adv_code_arr = adv_code if adv_code_arr is None else np.concatenate((adv_code_arr, adv_code), axis=0)
+        center_code_arr = center_code if center_code_arr is None else np.concatenate((center_code_arr, center_code),
+                                                                                     axis=0)
 
         if args.sample and it == 0:
             print("Sample images at iteration {}".format(it))
@@ -128,12 +146,19 @@ def central_attack(args, epsilon=8/255.):
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('perceptibility: {:.5f}'.format(torch.sqrt(perceptibility / num_test)))
 
-    map_val = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
-    logger.log('DHCA MAP(retrieval database): {:.5f}'.format(map_val))
-    map_val = cal_map(database_code, -center_code_arr, database_label, test_label, 5000)
-    logger.log('Theory MAP(retrieval database): {:.5f}'.format(map_val))
     map_val = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
     logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_val))
+
+    if not targeted:
+        map_val = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
+        logger.log('DHCA MAP(retrieval database): {:.5f}'.format(map_val))
+        map_val = cal_map(database_code, -center_code_arr, database_label, test_label, 5000)
+        logger.log('Theory MAP(retrieval database): {:.5f}'.format(map_val))
+    else:
+        map_val = cal_map(database_code, adv_code_arr, database_label, target_label, 5000)
+        logger.log('DHCA t-MAP(retrieval database): {:.5f}'.format(map_val))
+        map_val = cal_map(database_code, center_code_arr, database_label, target_label, 5000)
+        logger.log('Theory t-MAP(retrieval database): {:.5f}'.format(map_val))
 
 
 def parser_arguments():
