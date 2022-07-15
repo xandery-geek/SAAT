@@ -13,16 +13,18 @@ def adv_loss(noisy_output, target_code):
     # loss = torch.mean(noisy_output * target_code)
     sim = noisy_output * target_code
     w = (sim > -0.5).int()
+    m = w.sum()
     sim = w * (sim + 2) * sim
-    loss = torch.mean(sim)
+    loss = sim.sum()/m
     return loss
 
 def adv_loss_targeted(noisy_output, target_code):
     sim = noisy_output * target_code
     w = (sim < 0.5).int()
+    m = w.sum()
     sim = w * (sim + 2) * sim
-    loss = torch.mean(sim)
-    return -loss
+    loss = -sim.sum()/m
+    return loss
 
 
 def hash_adv(model, query, target_code, epsilon, step=1.0, iteration=100, targeted=False, record_loss=False):
@@ -53,16 +55,40 @@ def hash_adv(model, query, target_code, epsilon, step=1.0, iteration=100, target
     return query + delta.detach()
 
 
+# def hash_center_code(label, train_code, train_label, bit):
+#     code = torch.zeros(label.size(0), bit).cuda()
+#     for i in range(label.size(0)):
+#         l = label[i].repeat(train_label.size(0), 1)  # N*C
+#         w = torch.sum(l * train_label, dim=1) / torch.sum(torch.sign(l + train_label), dim=1)  # N
+#         w1 = w.repeat(bit, 1).t()  # N*bit
+#         w2 = 1 - torch.sign(w1)  # N*bit, weights for negative samples
+#         c = w2.sum() / bit  # number of dissimilar samples
+#         w1 = 1 - w2  # weights for positive samples
+#         code[i] = torch.sign(torch.sum(c * w1 * train_code - (train_label.size(0) - c) * w2 * train_code, dim=0))
+#     return code
+
 def hash_center_code(label, train_code, train_label, bit):
-    code = torch.zeros(label.size(0), bit).cuda()
-    for i in range(label.size(0)):
-        l = label[i].repeat(train_label.size(0), 1)  # N*C
-        w = torch.sum(l * train_label, dim=1) / torch.sum(torch.sign(l + train_label), dim=1)  # N
-        w1 = w.repeat(bit, 1).t()  # N*bit
-        w2 = 1 - torch.sign(w1)  # N*bit, weights for negative samples
-        c = w2.sum() / bit  # number of dissimilar samples
-        w1 = 1 - w2  # weights for positive samples
-        code[i] = torch.sign(torch.sum(c * w1 * train_code - (train_label.size(0) - c) * w2 * train_code, dim=0))
+    B = label.size(0)  # batch size
+    N = train_label.size(0)  # number of training data
+    C = label.size(1)  # number of classes
+
+    # w_1 = (label @ train_label.t() > 0).float()
+    # w_2 = 1 - w_1
+    
+    w_1 = (label @ train_label.t())/torch.sum(label, dim=1, keepdim=True)  # B * N
+    mask_p = w_1.sign()  # mask of positives
+
+    label_sum = torch.sum(label, dim=1, keepdim=True).repeat(1, N)  # B * N
+    train_label_sum = torch.sum(train_label, dim=1, keepdim=True).repeat(1, B)  # N * B
+    w_2 = (label_sum + train_label_sum.t())*(1 - mask_p)/C
+
+    w_p = 1 / torch.sum(w_1, dim=1, keepdim=True)
+    w_1 = w_p.where(w_p != torch.inf, torch.tensor([0], dtype=torch.float).cuda()) * w_1
+
+    w_n = 1 / torch.sum(w_2, dim=1, keepdim=True)
+    w_2 = w_n.where(w_n != torch.inf, torch.tensor([0], dtype=torch.float).cuda()) * w_2
+    
+    code = torch.sign(w_1 @ train_code - w_2 @ train_code)  # B * K
     return code
 
 
@@ -110,7 +136,7 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
         else:
             target_l = torch.from_numpy(target_label[idx]).cuda()
 
-        center_code = hash_center_code(target_l, train_code, train_label, args.bit)
+        center_code = hash_center_code(target_l.float(), train_code, train_label.float(), args.bit)
         adv_query = hash_adv(model, query, center_code, epsilon, iteration=args.iteration, targeted=targeted)
 
         perceptibility += F.mse_loss(query, adv_query).data * batch_size_
@@ -146,8 +172,8 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('perceptibility: {:.5f}'.format(torch.sqrt(perceptibility / num_test)))
 
-    map_val = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
-    logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_val))
+    # map_val = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
+    # logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_val))
 
     if not targeted:
         map_val = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
