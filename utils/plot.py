@@ -13,9 +13,11 @@ ms_tuple = (6, 6, 6, 6, 6, 8, 8, 6)
 
 
 def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_type='pr'):
+    filter_label = ('Original', 'HAG', 'SDHA', 'Ours')
     if not isinstance(curve_arr, Iterable):
         curve_arr = (curve_arr,)
         curve_label = (curve_label,)
+
 
     if color is None:
         # color = np.random.choice(color_tuple, len(curve_label))
@@ -29,10 +31,11 @@ def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_t
     plt.figure(1)
 
     for i, curve in enumerate(curve_arr):
-        x = curve[:, 0]
-        y = curve[:, 1]
-        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=1.5
-                 , marker=marker_tuple[i], markersize=ms_tuple[i])
+        if curve_label[i] in filter_label:
+            x = curve[:, 0]
+            y = curve[:, 1]
+            plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=1.5
+                     , marker=marker_tuple[i], markersize=ms_tuple[i])
 
     x_major_locator = MultipleLocator(0.1 if curve_type == 'pr' else 100)
     y_major_locator = MultipleLocator(0.1)
@@ -48,23 +51,6 @@ def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_t
     fig.set_size_inches(6, 5.5)
     # plt.savefig('../documents/{}-{}.svg'.format(title, curve_type), dpi=600, format='svg', transparent=True)
     plt.show()
-
-
-def parser_arguments():
-    parser = argparse.ArgumentParser()
-    # description of data
-    parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
-                        choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
-                        help='name of the dataset')
-    parser.add_argument('--hash_method', dest='hash_method', default='DPH',
-                        choices=['DPH', 'DPSH', 'HashNet'],
-                        help='deep hashing methods')
-    parser.add_argument('--backbone', dest='backbone', default='AlexNet',
-                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
-                        help='backbone network')
-    parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
-    parser.add_argument('--type', dest='type', type=str, default='pr', help='curve type')
-    return parser.parse_args()
 
 
 def plot_ablation(row, para_type='lambda'):
@@ -102,12 +88,29 @@ def plot_ablation(row, para_type='lambda'):
     plt.show()
 
 
+def parser_arguments():
+    parser = argparse.ArgumentParser()
+    # description of data
+    parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
+                        choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
+                        help='name of the dataset')
+    parser.add_argument('--hash_method', dest='hash_method', default='DPH',
+                        choices=['DPH', 'DPSH', 'HashNet'],
+                        help='deep hashing methods')
+    parser.add_argument('--backbone', dest='backbone', default='AlexNet',
+                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
+                        help='backbone network')
+    parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
+    parser.add_argument('--type', dest='type', type=str, default='pr', help='curve type')
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
-    # args = parser_arguments()
-    # attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
-    # arr = np.load('../log/{}/{}.npy'.format(attack_model, args.type))
-    # label = np.loadtxt('../log/{}/{}.txt'.format(attack_model, args.type), dtype=str)
-    # plot_curve(arr, label, title=args.dataset, curve_type=args.type)
+    args = parser_arguments()
+    attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
+    arr = np.load('../log/{}/{}.npy'.format(attack_model, args.type))
+    label = np.loadtxt('../log/{}/{}.txt'.format(attack_model, args.type), dtype=str)
+    plot_curve(arr, label, title=args.dataset, curve_type=args.type)
     # plot_ablation(row=(111, 120), para_type='mu')
-    plot_ablation(row=(121, 130), para_type='mu')
+    # plot_ablation(row=(121, 130), para_type='mu')
 

@@ -7,12 +7,21 @@ from utils.util import check_dir
 from utils.data_provider import get_data_loader, get_classes_num
 
 
+def get_alpha(cur_epoch, epochs):
+    return 1.0
+
+    # alpha = [0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0]
+    # alpha = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0]
+    # epoch2alpha = epochs / len(alpha)
+    # return alpha[int(cur_epoch / epoch2alpha)]
+
+
 def adv_loss(noisy_output, target_hash):
     loss = torch.mean(noisy_output * target_hash)
     return loss
 
 
-def hash_adv(model, query, target_hash, epsilon, step=2, iteration=7, randomize=True):
+def hash_adv(model, query, target_hash, epsilon, step=2, iteration=7, randomize=True, alpha=1.0):
     delta = torch.zeros_like(query).cuda()
     if randomize:
         delta.uniform_(-epsilon, epsilon)
@@ -20,7 +29,6 @@ def hash_adv(model, query, target_hash, epsilon, step=2, iteration=7, randomize=
     delta.requires_grad = True
 
     for i in range(iteration):
-        alpha = 1.0
         noisy_output = model(query + delta, alpha)
         loss = adv_loss(noisy_output, target_hash.detach())
         loss.backward()
@@ -31,19 +39,6 @@ def hash_adv(model, query, target_hash, epsilon, step=2, iteration=7, randomize=
         delta.grad.zero_()
 
     return query + delta.detach()
-
-
-def mixup(x, x_adv, gamma=2):
-    batch_size = x.size(0)
-    delta = x_adv - x
-    delta = gamma * delta
-    x_adv = (x + delta).clamp(-1, 1)
-    alpha = torch.rand(batch_size)
-    alpha = alpha.view(batch_size, 1, 1, 1)
-    alpha = alpha.expand_as(x).cuda()
-    x_adv = alpha * x + (1 - alpha) * x_adv
-    x_adv = x_adv.detach()
-    return x_adv
 
 
 def parser_arguments():
@@ -61,7 +56,7 @@ def parser_arguments():
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
-    parser.add_argument('--epochs', dest='epochs', type=int, default=10, help='epoch of adversarial training')
+    parser.add_argument('--epochs', dest='epochs', type=int, default=30, help='epoch of adversarial training')
     parser.add_argument('--iteration', dest='iteration', type=int, default=7, help='iteration of adversarial attack')
     parser.add_argument('--lambda', dest='p_lambda', type=float, default=1.0, help='lambda for adversarial loss')
     parser.add_argument('--mu', dest='p_mu', type=float, default=1e-4, help='mu for quantization loss')
@@ -102,14 +97,15 @@ def dhcat(args, epsilon=8 / 255.0):
             x, y, index = data
             x, y = x.cuda(), y.cuda()
 
-            center_code = hash_center_code(y, U_ben, train_label, args.bit)
-            x_adv = hash_adv(model, x, center_code, epsilon, step=2, iteration=args.iteration, randomize=True)
-            x_adv = x_adv.detach()
+            alpha = get_alpha(epoch, args.epochs)  # alpha for vanishing gradient problem
 
+            # inner minimization aims to generate AEs
+            center_code = hash_center_code(y, U_ben, train_label, args.bit)
+            x_adv = hash_adv(model, x, center_code, epsilon, step=2, iteration=args.iteration, alpha=alpha)
+
+            # outter maximization aims to optimzize parameters of models
             model.zero_grad()
-            # mixup
-            # x_adv = mixup(x, x_adv)
-            adv_code = model(x_adv, 1.0)
+            adv_code = model(x_adv, alpha)
             ben_code = model(x, 1.0)
             U_ben[index, :] = torch.sign(ben_code.data)
             center_code = hash_center_code(y, U_ben, train_label, args.bit)
@@ -124,9 +120,7 @@ def dhcat(args, epsilon=8 / 255.0):
             epoch_loss += loss.item()
 
             if it % 50 == 0:
-                print('epoch: {:2d}, step: {:3d}, lr: {:.5f}, loss: {:.5f}'.format(
-                        epoch, it, scheduler.get_last_lr()[0], loss))
-                print("ben: {:.5f}, adv: {:.5f}, qua: {:.5f}".format(loss_hash_ben.item(),
+                print("loss: {:.5f}\tben: {:.5f}\tadv: {:.5f}\tqua: {:.5f}".format(loss, loss_hash_ben.item(),
                                                                      loss_adv.item(), loss_qua.item()))
 
         print('Epoch: %3d/%3d\tTrain_loss: %3.5f \n' % (epoch, args.epochs, epoch_loss / len(train_loader)))

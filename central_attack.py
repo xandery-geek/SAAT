@@ -55,18 +55,6 @@ def hash_adv(model, query, target_code, epsilon, step=1.0, iteration=100, target
     return query + delta.detach()
 
 
-# def hash_center_code(label, train_code, train_label, bit):
-#     code = torch.zeros(label.size(0), bit).cuda()
-#     for i in range(label.size(0)):
-#         l = label[i].repeat(train_label.size(0), 1)  # N*C
-#         w = torch.sum(l * train_label, dim=1) / torch.sum(torch.sign(l + train_label), dim=1)  # N
-#         w1 = w.repeat(bit, 1).t()  # N*bit
-#         w2 = 1 - torch.sign(w1)  # N*bit, weights for negative samples
-#         c = w2.sum() / bit  # number of dissimilar samples
-#         w1 = 1 - w2  # weights for positive samples
-#         code[i] = torch.sign(torch.sum(c * w1 * train_code - (train_label.size(0) - c) * w2 * train_code, dim=0))
-#     return code
-
 def hash_center_code(label, train_code, train_label, bit):
     B = label.size(0)  # batch size
     N = train_label.size(0)  # number of training data
@@ -134,7 +122,13 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
         if not targeted:
             target_l = label
         else:
-            target_l = torch.from_numpy(target_label[idx]).cuda()
+            if args.retrieve:
+                category = 4
+                target_l = torch.zeros((1, get_classes_num(args.dataset)))
+                target_l[0, category] = 1
+                target_l = target_l.repeat(batch_size_, 1).cuda()
+            else:
+                target_l = torch.from_numpy(target_label[idx]).cuda()
 
         center_code = hash_center_code(target_l.float(), train_code, train_label.float(), args.bit)
         adv_query = hash_adv(model, query, center_code, epsilon, iteration=args.iteration, targeted=targeted)
@@ -172,8 +166,8 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('perceptibility: {:.5f}'.format(torch.sqrt(perceptibility / num_test)))
 
-    # map_val = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
-    # logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_val))
+    map_val = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
+    logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_val))
 
     if not targeted:
         map_val = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)

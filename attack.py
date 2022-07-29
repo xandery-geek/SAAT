@@ -51,8 +51,10 @@ if __name__ == '__main__':
         args.iteration = 1500
         sdha(args, targeted=args.targeted)
     elif args.method == 'dhta':
+        args.iteration = 2000
         dhta(args)
     elif args.method == 'p2p':
+        args.iteration = 2000
         dhta(args, num_target=1)
     elif args.method == 'tha':
         tha(args)
