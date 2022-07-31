@@ -78,11 +78,6 @@ def similarity_pn(batch_feature, features, batch_label, labels, bit):
 
 def target_adv_loss(noisy_output, target_hash):
     loss = -torch.mean(noisy_output * target_hash)
-    # sim = noisy_output * target_hash
-    # w = (sim < 0.5).int()
-    # m = w.sum()
-    # sim = w * (sim + 2) * sim
-    # loss = -sim.sum()/m
     return loss
 
 

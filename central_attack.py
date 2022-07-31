@@ -1,5 +1,4 @@
 import argparse
-import torch.nn.functional as F
 from tqdm import tqdm
 from model.util import *
 from utils.data_provider import *
@@ -113,7 +112,7 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
         else:
             raise ValueError('Please generate target_label before attack!')
 
-    perceptibility = 0
+    perceptibility = torch.tensor([0, 0, 0], dtype=torch.float)
     query_code_arr, adv_code_arr, center_code_arr = None, None, None
     for it, (query, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
         query, label = query.cuda(), label.cuda()
@@ -133,7 +132,7 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
         center_code = hash_center_code(target_l.float(), train_code, train_label.float(), args.bit)
         adv_query = hash_adv(model, query, center_code, epsilon, iteration=args.iteration, targeted=targeted)
 
-        perceptibility += F.mse_loss(query, adv_query).data * batch_size_
+        perceptibility += cal_perceptibility(query.cpu().detach(), adv_query.cpu().detach()) * batch_size_
 
         query_code = model(query).sign().cpu().detach().numpy()
         adv_code = model(adv_query).sign().cpu().detach().numpy()
@@ -160,11 +159,11 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
 
     # save code
     np.save(os.path.join('log', attack_model, 'Original_code.npy'), query_code_arr)
-    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), adv_code_arr)
+    np.save(os.path.join('log', attack_model, '{}{}_code.npy'.format(method, '_targeted' if targeted else '')), adv_code_arr)
 
     # calculate map
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
-    logger.log('perceptibility: {:.5f}'.format(torch.sqrt(perceptibility / num_test)))
+    logger.log('perceptibility: {}'.format(perceptibility / num_test))
 
     map_val = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
     logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_val))

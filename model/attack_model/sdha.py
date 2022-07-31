@@ -144,7 +144,7 @@ def sdha(args, targeted=False):
                                          args.batch_size, shuffle=False)
     train_loader, num_train = get_data_loader(args.data_dir, args.dataset, 'train',
                                               args.batch_size, shuffle=False)
-    test_loader, _ = get_data_loader(args.data_dir, args.dataset, 'test',
+    test_loader, num_test = get_data_loader(args.data_dir, args.dataset, 'test',
                                      args.batch_size, shuffle=False)
 
     train_label = get_data_label(args.data_dir, args.dataset, 'train')
@@ -173,13 +173,15 @@ def sdha(args, targeted=False):
         g_similarity = target_label_tensor @ train_label_tensor.transpose(0, 1)  # N_test * N_train
 
     # attack
+    perceptibility = torch.tensor([0, 0, 0], dtype=torch.float)
     query_code_arr, adv_code_arr = None, None
     for _, (x, _, idx) in enumerate(tqdm(test_loader, ncols=50)):
-        h, h_hat, _ = attack(model, x, idx, targeted=targeted, epochs=args.iteration)
+        h, h_hat, x_hat = attack(model, x, idx, targeted=targeted, epochs=args.iteration)
         # h, h_hat = theory_attack_targeted(model, x, idx)
         # h, h_hat = theory_attack(model, x, idx)
         query_code_arr = h.numpy() if query_code_arr is None else np.concatenate((query_code_arr, h.numpy()), axis=0)
         adv_code_arr = h_hat.numpy() if adv_code_arr is None else np.concatenate((adv_code_arr, h_hat.numpy()), axis=0)
+        perceptibility += cal_perceptibility(x, x_hat) * x.size(0)
 
     database_code, database_label = get_database_code(model, database_loader, attack_model)
 
@@ -188,6 +190,7 @@ def sdha(args, targeted=False):
 
     # calculate map
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
+    logger.log('perceptibility: {}'.format(perceptibility / num_test))
 
     ori_map = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
     logger.log('Ori MAP(retrieval database): {:.5f}'.format(ori_map))

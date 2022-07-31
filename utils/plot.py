@@ -4,27 +4,25 @@ from matplotlib.pyplot import MultipleLocator
 import numpy as np
 from collections.abc import Iterable
 
-color_tuple = ('#7f7f7f', '#d8383a', '#8d69b8', '#519e3e',
-               '#84584e', '#d57dbf', '#ef8636', '#3b75af')
+color_tuple = ('#7f7f7f', '#2ca02c', '#e377c2', '#1f77b4')
+
+color_tuple_targeted = ('#7f7f7f', '#2ca02c', '#e377c2', '#9467bd', '#8c564b','#1f77b4')
 
 style_tuple = ('-', '-', '-', '-', '-', '-', '-', '-')
 marker_tuple = ('s', '^', '^', '^', '^', '*', '*', 'h')
-ms_tuple = (6, 6, 6, 6, 6, 8, 8, 6)
+ms_tuple = (8, 9, 9, 9, 9, 9, 9, 9)
 
 
-def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_type='pr'):
-    filter_label = ('Original', 'HAG', 'SDHA', 'Ours')
+def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_type='pr', targeted=False):
+    filter_label = ('Original',) if targeted else ('',)
     if not isinstance(curve_arr, Iterable):
         curve_arr = (curve_arr,)
         curve_label = (curve_label,)
 
-
     if color is None:
-        # color = np.random.choice(color_tuple, len(curve_label))
-        color = color_tuple
+        color = color_tuple_targeted if targeted else color_tuple
 
     if style is None:
-        # style = np.random.choice(style_tuple, len(curve_label))
         style = style_tuple
 
     fig, ax = plt.subplots()
@@ -32,41 +30,42 @@ def plot_curve(curve_arr, curve_label, title='', color=None, style=None, curve_t
 
     for i, curve in enumerate(curve_arr):
         if curve_label[i] in filter_label:
-            x = curve[:, 0]
-            y = curve[:, 1]
-            plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=1.5
-                     , marker=marker_tuple[i], markersize=ms_tuple[i])
+            continue
+        x = curve[:, 0]
+        y = curve[:, 1]
+        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=2.5)
 
-    x_major_locator = MultipleLocator(0.1 if curve_type == 'pr' else 100)
+    x_major_locator = MultipleLocator(0.2 if curve_type == 'pr' else 200)
     y_major_locator = MultipleLocator(0.1)
-    loc = (0.02, 0.43) if curve_type == 'pr' else (0.02, 0.37)
+    loc = (0.05, 0.05) if targeted else (0.05, 0.65)
     ax.xaxis.set_major_locator(x_major_locator)
     ax.yaxis.set_major_locator(y_major_locator)
+    plt.ylim(0.05, 0.7)
     plt.xlabel('Recall' if curve_type == 'pr' else 'Number of top ranked samples')
     plt.ylabel('Precision')
     plt.title(title)
     plt.legend(loc=loc, framealpha=0.7)
-    plt.grid(linestyle='--')
+    # plt.grid(linestyle='--')
     fig.subplots_adjust(left=0.09, right=0.99)
     fig.set_size_inches(6, 5.5)
-    # plt.savefig('../documents/{}-{}.svg'.format(title, curve_type), dpi=600, format='svg', transparent=True)
-    plt.show()
+    filename = curve_type + ('_targeted' if targeted else '')
+    plt.savefig('../documents/{}-{}.pdf'.format(title, filename), dpi=600, format='pdf', transparent=True)
+    # plt.show()
 
 
 def plot_ablation(row, para_type='lambda'):
     import pandas as pd
     data = pd.DataFrame(pd.read_excel('../documents/AttackMAP.xlsx', sheet_name=0))
-    curve_label = ['Original', 'P2P', 'DHTA', 'THA', 'ProS-GAN', 'HAG', 'SDHA', 'DHCA']
+    curve_label = ['Original', 'HAG', 'SDHA', 'Ours']
 
     parameters = []
     map_value = []
     for i in range(row[0], row[1]):
         value = data.loc[i].values
         if i == row[0]:
-            parameters = [float(v) for v in value[1:6]]
+            parameters = [float(v) for v in value[1:7]]
         else:
-            map_value.append([float(v) for v in value[1:6]])
-
+            map_value.append([float(v) for v in value[1:7]])
     curve_arr = np.array([list(zip(parameters, val)) for val in map_value])
 
     color, style = color_tuple, style_tuple
@@ -76,16 +75,16 @@ def plot_ablation(row, para_type='lambda'):
     for i, curve in enumerate(curve_arr):
         x = range(len(curve[:, 0]))
         y = curve[:, 1]
-        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=1.5
-                 , marker=marker_tuple[i], markersize=ms_tuple[i])
+        plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=2.5, markerfacecolor='none'
+                 , markeredgewidth=2, marker=marker_tuple[i], markersize=ms_tuple[i])
     plt.xticks(range(curve_arr.shape[1]), labels=[str(i) for i in curve_arr[0, :, 0]])
     plt.xlabel('weighting factor ' + ('$\lambda$' if para_type == 'lambda' else '$\mu$'))
     plt.ylabel('MAP(%)')
-    plt.legend(loc=(1.01, 0.5), framealpha=0.7)
+    plt.legend(loc=(0.05, 0.65))
     plt.grid(linestyle='--')
-    fig.subplots_adjust(right=0.8)
-    plt.savefig('../documents/{}-{}.svg'.format('ablation', para_type), dpi=600, format='svg', transparent=True)
-    plt.show()
+    fig.subplots_adjust(left=0.1, right=0.99)
+    plt.savefig('../documents/{}-{}.pdf'.format('ablation', para_type), dpi=600, format='pdf', transparent=True)
+    # plt.show()
 
 
 def parser_arguments():
@@ -102,15 +101,18 @@ def parser_arguments():
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--type', dest='type', type=str, default='pr', help='curve type')
+    parser.add_argument('--targeted', dest='targeted', action="store_true", default=False, help='targeted attack')
     return parser.parse_args()
 
 
 if __name__ == '__main__':
-    args = parser_arguments()
-    attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
-    arr = np.load('../log/{}/{}.npy'.format(attack_model, args.type))
-    label = np.loadtxt('../log/{}/{}.txt'.format(attack_model, args.type), dtype=str)
-    plot_curve(arr, label, title=args.dataset, curve_type=args.type)
-    # plot_ablation(row=(111, 120), para_type='mu')
-    # plot_ablation(row=(121, 130), para_type='mu')
+    # args = parser_arguments()
+    # attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
+    # filename = args.type + ('_targeted' if args.targeted else '')
+    # arr = np.load('../log/{}/{}.npy'.format(attack_model, filename))
+    # label = np.loadtxt('../log/{}/{}.txt'.format(attack_model, filename), dtype=str)
+    # label = [l if 'DHCA' not in l else 'Ours' for l in label]
+    # plot_curve(arr, label, title=args.dataset, curve_type=args.type, targeted=args.targeted)
+    plot_ablation(row=(89, 94), para_type='lambda')
+    # plot_ablation(row=(97, 102), para_type='mu')
 

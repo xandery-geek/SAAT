@@ -91,12 +91,14 @@ def hag(args):
     test_labels = get_data_label(args.data_dir, args.dataset, 'test')
 
     # attack
+    perceptibility = torch.tensor([0, 0, 0], dtype=torch.float)
     query_code_arr, adv_code_arr = None, None
     for i, (x, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
         h, h_hat, x_hat = attack(model, x, epochs=args.iteration)
         # h, h_hat, x_hat = theory_attack(model, x)
         query_code_arr = h.numpy() if query_code_arr is None else np.concatenate((query_code_arr, h.numpy()), axis=0)
         adv_code_arr = h_hat.numpy() if adv_code_arr is None else np.concatenate((adv_code_arr, h_hat.numpy()), axis=0)
+        perceptibility += cal_perceptibility(x, x_hat) * x.size(0)
 
     database_code, database_label = get_database_code(model, database_loader, attack_model)
 
@@ -109,6 +111,7 @@ def hag(args):
     ori_map = cal_map(database_code, query_code_arr, database_label, test_labels, 5000)
 
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
+    logger.log('perceptibility: {}'.format(perceptibility / num_test))
     logger.log('HAG MAP(retrieval database): {:.5f}'.format(adv_map))
     logger.log('Theory MAP(retrieval database): {:.5f}'.format(theory_map))
     logger.log('Ori MAP(retrieval database): {:.5f}'.format(ori_map))

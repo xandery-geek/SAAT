@@ -1,5 +1,5 @@
 import numpy as np
-
+import torch
 
 def cal_hamming_dis(b1, b2):
     k = b2.shape[1]  # length of hash code
@@ -93,3 +93,10 @@ def cal_top_n(retrieval_binary, query_binary, retrieval_label, query_label, top_
 
     top_n_p /= query_number
     return np.array(list(zip(top_n, top_n_p)))
+
+
+def cal_perceptibility(x1, x2):
+    l_inf = torch.linalg.matrix_norm(x1 - x2, ord=torch.inf).mean()
+    l_2 = torch.linalg.matrix_norm(x1 - x2, ord=2).mean()
+    mse = ((x1 - x2)**2).mean()
+    return torch.tensor([l_inf, l_2, mse])
