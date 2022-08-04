@@ -9,9 +9,9 @@ def cal_pr_or_topn(dataset, hash_method, backbone, bit, data_dir='../data', curv
     func = cal_pr if curve_type == 'pr' else cal_top_n
 
     if target:
-        method_tuple = ('Original', 'P2P', 'DHTA', 'THA',  'ProS-GAN', 'DHCA_targeted')
+        method_tuple = ('Original', 'P2P', 'DHTA', 'THA',  'ProS-GAN', 'Ours_targeted')
     else:
-        method_tuple = ('Original', 'HAG', 'SDHA', 'DHCA')
+        method_tuple = ('Original', 'HAG', 'SDHA', 'Ours')
 
     attack_model = '{}_{}_{}_{}'.format(dataset, hash_method, backbone, bit)
 
@@ -48,12 +48,11 @@ def cal_pr_or_topn(dataset, hash_method, backbone, bit, data_dir='../data', curv
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
-    # description of data
     parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
                         choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
                         help='name of the dataset')
     parser.add_argument('--hash_method', dest='hash_method', default='DPH',
-                        choices=['DPH', 'DPSH', 'HashNet'],
+                        choices=['DPH', 'DPSH', 'HashNet', 'CSQ'],
                         help='deep hashing methods')
     parser.add_argument('--backbone', dest='backbone', default='AlexNet',
                         choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],

@@ -1,36 +1,26 @@
 import os
 import torch
 import argparse
-from central_attack import hash_center_code
+from adv_attack import generate_mainstay_code
 from model.util import load_model, generate_code_ordered
 from utils.util import check_dir
 from utils.data_provider import get_data_loader, get_classes_num
 
 
-def get_alpha(cur_epoch, epochs):
-    return 1.0
-
-    # alpha = [0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0]
-    # alpha = [0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0]
-    # epoch2alpha = epochs / len(alpha)
-    # return alpha[int(cur_epoch / epoch2alpha)]
-
-
-def adv_loss(noisy_output, target_hash):
-    loss = torch.mean(noisy_output * target_hash)
+def adv_loss(adv_code, target_code):
+    loss = torch.mean(adv_code * target_code)
     return loss
 
 
-def hash_adv(model, query, target_hash, epsilon, step=2, iteration=7, randomize=True, alpha=1.0):
+def adv_generator(model, query, target_hash, epsilon, step=2, iteration=7, alpha=1.0):
     delta = torch.zeros_like(query).cuda()
-    if randomize:
-        delta.uniform_(-epsilon, epsilon)
-        delta.data = (query.data + delta.data).clamp(0, 1) - query.data
+    delta.uniform_(-epsilon, epsilon)
+    delta.data = (query.data + delta.data).clamp(0, 1) - query.data
     delta.requires_grad = True
 
     for i in range(iteration):
-        noisy_output = model(query + delta, alpha)
-        loss = adv_loss(noisy_output, target_hash.detach())
+        adv_code = model(query + delta, alpha)
+        loss = adv_loss(adv_code, target_hash.detach())
         loss.backward()
 
         delta.data = delta - step / 255 * torch.sign(delta.grad.detach())
@@ -49,22 +39,22 @@ def parser_arguments():
     parser.add_argument('--data_dir', dest='data_dir', default='../data/', help='path of the dataset')
     parser.add_argument('--device', dest='device', type=str, default='0', help='gpu device')
     parser.add_argument('--hash_method', dest='hash_method', default='DPH',
-                        choices=['DPH', 'DPSH', 'HashNet'],
+                        choices=['DPH', 'DPSH', 'HashNet', 'CSQ'],
                         help='deep hashing methods')
     parser.add_argument('--backbone', dest='backbone', default='AlexNet',
-                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet34', 'ResNet50', 'ResNet101'],
+                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
-    parser.add_argument('--epochs', dest='epochs', type=int, default=30, help='epoch of adversarial training')
+    parser.add_argument('--epochs', dest='epochs', type=int, default=20, help='number of training epochs')
     parser.add_argument('--iteration', dest='iteration', type=int, default=7, help='iteration of adversarial attack')
     parser.add_argument('--lambda', dest='p_lambda', type=float, default=1.0, help='lambda for adversarial loss')
     parser.add_argument('--mu', dest='p_mu', type=float, default=1e-4, help='mu for quantization loss')
     return parser.parse_args()
 
 
-def dhcat(args, epsilon=8 / 255.0):
-    print("Current lambda: {}, mu: {}".format(args.p_lambda, args.p_mu))
+def saat(args, epsilon=8 / 255.0):
+    print("=> lambda: {}, mu: {}".format(args.p_lambda, args.p_mu))
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     train_loader, num_train = get_data_loader(args.data_dir, args.dataset, 'train',
@@ -82,6 +72,7 @@ def dhcat(args, epsilon=8 / 255.0):
     U_ben = torch.zeros(num_train, args.bit).cuda()
     U_ben.data = train_code.data
 
+    # initialize `U` and `Y` of hashing model
     if hasattr(model, 'U') and hasattr(model, 'Y'):
         model.U.data = train_code.data
         model.Y.data = train_label.data
@@ -93,25 +84,22 @@ def dhcat(args, epsilon=8 / 255.0):
     # adversarial training
     for epoch in range(args.epochs):
         epoch_loss = 0
-        for it, data in enumerate(train_loader):
-            x, y, index = data
-            x, y = x.cuda(), y.cuda()
+        for it, (query, label, idx) in enumerate(train_loader):
+            query, label = query.cuda(), label.cuda()
 
-            alpha = get_alpha(epoch, args.epochs)  # alpha for vanishing gradient problem
+            # inner minimization aims to generate adversarial examples
+            mainstay_code = generate_mainstay_code(label, U_ben, train_label)
+            adv_query = adv_generator(model, query, mainstay_code, epsilon, step=2, iteration=args.iteration)
 
-            # inner minimization aims to generate AEs
-            center_code = hash_center_code(y, U_ben, train_label, args.bit)
-            x_adv = hash_adv(model, x, center_code, epsilon, step=2, iteration=args.iteration, alpha=alpha)
-
-            # outter maximization aims to optimzize parameters of models
+            # outer maximization aims to optimize parameters of model
             model.zero_grad()
-            adv_code = model(x_adv, alpha)
-            ben_code = model(x, 1.0)
-            U_ben[index, :] = torch.sign(ben_code.data)
-            center_code = hash_center_code(y, U_ben, train_label, args.bit)
+            adv_code = model(adv_query)
+            ben_code = model(query)
+            U_ben[idx, :] = torch.sign(ben_code.data)
+            mainstay_code = generate_mainstay_code(label, U_ben, train_label)
 
-            loss_hash_ben = model.loss_function(ben_code, y, index)
-            loss_adv = - adv_loss(adv_code, center_code)
+            loss_hash_ben = model.loss_function(ben_code, label, idx)
+            loss_adv = - adv_loss(adv_code, mainstay_code)
             loss_qua = torch.mean((adv_code - torch.sign(adv_code)) ** 2)
             loss = args.p_lambda * loss_adv + args.p_mu * loss_qua + loss_hash_ben
             loss.backward()
@@ -126,9 +114,9 @@ def dhcat(args, epsilon=8 / 255.0):
         print('Epoch: %3d/%3d\tTrain_loss: %3.5f \n' % (epoch, args.epochs, epoch_loss / len(train_loader)))
 
     if args.p_lambda != 1.0 or args.p_mu != 1e-4:
-        robust_model = 'cat_{}_{}_{}'.format(attack_model, args.p_lambda, args.p_mu)
+        robust_model = 'saat_{}_{}_{}'.format(attack_model, args.p_lambda, args.p_mu)
     else:
-        robust_model = 'cat_{}'.format(attack_model)
+        robust_model = 'saat_{}'.format(attack_model)
 
     check_dir('log/{}'.format(robust_model))
     robust_model_path = 'checkpoint/{}.pth'.format(robust_model)
@@ -136,4 +124,4 @@ def dhcat(args, epsilon=8 / 255.0):
 
 
 if __name__ == '__main__':
-    dhcat(parser_arguments())
+    saat(parser_arguments())

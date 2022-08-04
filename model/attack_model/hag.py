@@ -1,9 +1,11 @@
-# HAG
+# HAG: Adversarial Examples for Hamming Space Search
 
-import torch.nn.functional
+import os
+import torch
+import numpy as np
 from tqdm import tqdm
-from utils.hamming_matching import *
-from model.util import *
+from utils.hamming_matching import cal_map, cal_perceptibility
+from model.util import get_alpha, get_attack_model_name, load_model, get_database_code
 from utils.data_provider import get_data_loader, get_data_label
 from utils.util import Logger
 
@@ -15,8 +17,10 @@ def load_optimizer(param):
 def mask_code(adv_code, ori_code, threshold_t):
     """
     calculate mask code
-    @adv_code: code of adversarial example
-    @ori_code: code of original image
+    :param adv_code: hash code of adversarial example
+    :param ori_code: hash code of original image
+    :param threshold_t:
+    :return: mask code
     """
     # if s[i] == 1: ad_code[i] and or_code[i] are invariant, which means they need optimize
     # if s[i] == 0: ad_code[i] and or_code[i] are zero, which means they already have different signs
@@ -44,7 +48,7 @@ def theory_attack(model, x):
     return h.detach().cpu().sign(), h_hat.detach().cpu().sign(), x.detach().cpu()
 
 
-def attack(model, x, epochs=100, epsilon=8/255., record_loss=False):
+def adv_generator(model, x, epochs=100, epsilon=8 / 255., record_loss=False):
     x = x.cuda()
     h = model(x)
     x, h = x.detach(), h.detach()
@@ -94,10 +98,10 @@ def hag(args):
     perceptibility = torch.tensor([0, 0, 0], dtype=torch.float)
     query_code_arr, adv_code_arr = None, None
     for i, (x, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
-        h, h_hat, x_hat = attack(model, x, epochs=args.iteration)
+        h, h_hat, x_hat = adv_generator(model, x, epochs=args.iteration)
         # h, h_hat, x_hat = theory_attack(model, x)
-        query_code_arr = h.numpy() if query_code_arr is None else np.concatenate((query_code_arr, h.numpy()), axis=0)
-        adv_code_arr = h_hat.numpy() if adv_code_arr is None else np.concatenate((adv_code_arr, h_hat.numpy()), axis=0)
+        query_code_arr = h.numpy() if query_code_arr is None else np.concatenate((query_code_arr, h.numpy()))
+        adv_code_arr = h_hat.numpy() if adv_code_arr is None else np.concatenate((adv_code_arr, h_hat.numpy()))
         perceptibility += cal_perceptibility(x, x_hat) * x.size(0)
 
     database_code, database_label = get_database_code(model, database_loader, attack_model)
@@ -106,12 +110,12 @@ def hag(args):
     np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), adv_code_arr)
 
     # calculate map
+    ori_map = cal_map(database_code, query_code_arr, database_label, test_labels, 5000)
     adv_map = cal_map(database_code, adv_code_arr, database_label, test_labels, 5000)
     theory_map = cal_map(database_code, -query_code_arr, database_label, test_labels, 5000)
-    ori_map = cal_map(database_code, query_code_arr, database_label, test_labels, 5000)
 
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('perceptibility: {}'.format(perceptibility / num_test))
+    logger.log('Ori MAP(retrieval database): {:.5f}'.format(ori_map))
     logger.log('HAG MAP(retrieval database): {:.5f}'.format(adv_map))
     logger.log('Theory MAP(retrieval database): {:.5f}'.format(theory_map))
-    logger.log('Ori MAP(retrieval database): {:.5f}'.format(ori_map))

@@ -13,15 +13,12 @@ def cal_similarity(batch_label, train_label):
     return S
 
 
-def target_adv_loss(noisy_output, target_hash):
-    loss = -torch.mean(noisy_output * target_hash)
-    # loss = noisy_output * target_hash
-    # loss = (loss -2)*loss
-    # loss = torch.mean(loss)
+def target_adv_loss(adv_code, target_code):
+    loss = -torch.mean(adv_code * target_code)
     return loss
 
 
-def target_hash_adv(model, query, target_hash, epsilon, step=2, iteration=7, randomize=True):
+def adv_generator(model, query, target_code, epsilon, step=2, iteration=7, randomize=True):
     delta = torch.zeros_like(query).cuda()
     if randomize:
         delta.uniform_(-epsilon, epsilon)
@@ -29,8 +26,8 @@ def target_hash_adv(model, query, target_hash, epsilon, step=2, iteration=7, ran
     delta.requires_grad = True
 
     for i in range(iteration):
-        noisy_output = model(query + delta)
-        loss = target_adv_loss(noisy_output, target_hash.detach())
+        adv_code = model(query + delta)
+        loss = target_adv_loss(adv_code, target_code.detach())
         loss.backward()
 
         delta.data = delta - step / 255 * torch.sign(delta.grad.detach())
@@ -84,13 +81,12 @@ def atrdh(args, epsilon=8 / 255.0, iteration=7):
 
     # adversarial training
     for epoch in range(args.epochs):
-        for it, data in enumerate(train_loader):
-            x, y, index = data
-            x, y = x.cuda(), y.cuda()
-            batch_size_ = index.size(0)
+        for it, (query, label, idx) in enumerate(train_loader):
+            query, label = query.cuda(), label.cuda()
+            batch_size_ = idx.size(0)
 
-            ben_code = model(x)
-            train_code[index.numpy(), :] = torch.sign(ben_code.detach())
+            ben_code = model(query)
+            train_code[idx.numpy(), :] = torch.sign(ben_code.detach())
 
             select_index = np.random.choice(range(target_label.size(0)), size=batch_size_)
             batch_target_label = target_label.index_select(0, torch.from_numpy(select_index)).cuda()
@@ -108,18 +104,18 @@ def atrdh(args, epsilon=8 / 255.0, iteration=7):
             pnet_scheduler.step()
             set_requires_grad(pnet, False)
 
-            x_adv = target_hash_adv(model, x, batch_target_code.sign(), epsilon, step=2, iteration=iteration,
-                                    randomize=True)
+            adv_query = adv_generator(model, query, batch_target_code.sign(), epsilon, step=2, iteration=iteration,
+                                      randomize=True)
 
             # optimize model
             model.zero_grad()
 
-            adv_code = model(x_adv)
-            U_ben[index, :] = ben_code.data
+            adv_code = model(adv_query)
+            U_ben[idx, :] = ben_code.data
 
-            ben_loss = model.loss_function(ben_code, y, index)
+            ben_loss = model.loss_function(ben_code, label, idx)
 
-            S = cal_similarity(y, train_label)
+            S = cal_similarity(label, train_label)
             theta_x = adv_code.mm(U_ben.t()) / args.bit
             logloss = (theta_x - S.cuda()) ** 2
             adv_loss = 2 * logloss.sum() / (num_train * batch_size_)

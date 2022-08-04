@@ -89,12 +89,11 @@ def plot_ablation(row, para_type='lambda'):
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
-    # description of data
     parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
                         choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
                         help='name of the dataset')
     parser.add_argument('--hash_method', dest='hash_method', default='DPH',
-                        choices=['DPH', 'DPSH', 'HashNet'],
+                        choices=['DPH', 'DPSH', 'HashNet', 'CSQ'],
                         help='deep hashing methods')
     parser.add_argument('--backbone', dest='backbone', default='AlexNet',
                         choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
@@ -106,13 +105,13 @@ def parser_arguments():
 
 
 if __name__ == '__main__':
-    # args = parser_arguments()
-    # attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
-    # filename = args.type + ('_targeted' if args.targeted else '')
-    # arr = np.load('../log/{}/{}.npy'.format(attack_model, filename))
-    # label = np.loadtxt('../log/{}/{}.txt'.format(attack_model, filename), dtype=str)
-    # label = [l if 'DHCA' not in l else 'Ours' for l in label]
-    # plot_curve(arr, label, title=args.dataset, curve_type=args.type, targeted=args.targeted)
-    plot_ablation(row=(89, 94), para_type='lambda')
+    args = parser_arguments()
+    attack_model = '{}_{}_{}_{}'.format(args.dataset, args.hash_method, args.backbone, args.bit)
+    filename = args.type + ('_targeted' if args.targeted else '')
+    arr = np.load('../log/{}/{}.npy'.format(attack_model, filename))
+    label = np.loadtxt('../log/{}/{}.txt'.format(attack_model, filename), dtype=str)
+    label = [l if 'Ours' not in l else 'Ours' for l in label]
+    plot_curve(arr, label, title=args.dataset, curve_type=args.type, targeted=args.targeted)
+    # plot_ablation(row=(89, 94), para_type='lambda')
     # plot_ablation(row=(97, 102), para_type='mu')
 

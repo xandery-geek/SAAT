@@ -1,24 +1,31 @@
+import os
 import argparse
+import torch
+import numpy as np
 from tqdm import tqdm
-from model.util import *
-from utils.data_provider import *
-from utils.hamming_matching import *
-from utils.util import Logger, str2bool
+from model.util import get_alpha, get_attack_model_name, load_model, generate_code, get_database_code
+from model.util import sample_images, retrieve_images, save_retrieval_images
+from utils.data_provider import get_data_loader, get_data_label, get_classes_num
+from utils.hamming_matching import cal_map, cal_perceptibility
+from utils.util import Logger
 
-torch.multiprocessing.set_sharing_strategy('file_system')
 
+def adv_loss(adv_code, target_code):
+    # adversarial loss
+    # loss = torch.mean(adv_code * target_code)
 
-def adv_loss(noisy_output, target_code):
-    # loss = torch.mean(noisy_output * target_code)
-    sim = noisy_output * target_code
+    # a better version
+    sim = adv_code * target_code
     w = (sim > -0.5).int()
     m = w.sum()
     sim = w * (sim + 2) * sim
     loss = sim.sum()/m
     return loss
 
-def adv_loss_targeted(noisy_output, target_code):
-    sim = noisy_output * target_code
+
+def adv_loss_targeted(adv_code, target_code):
+    # loss = - torch.mean(adv_code * target_code)
+    sim = adv_code * target_code
     w = (sim < 0.5).int()
     m = w.sum()
     sim = w * (sim + 2) * sim
@@ -26,7 +33,19 @@ def adv_loss_targeted(noisy_output, target_code):
     return loss
 
 
-def hash_adv(model, query, target_code, epsilon, step=1.0, iteration=100, targeted=False, record_loss=False):
+def adv_generator(model, query, target_code, epsilon, step=1.0, iteration=100, targeted=False, record_loss=False):
+    """
+    Generator of adversarial examples, PGD here
+    :param model: hashing model
+    :param query: benign query (image)
+    :param target_code: target code for attack
+    :param epsilon:
+    :param step:
+    :param iteration:
+    :param targeted: targeted or non-targeted attack
+    :param record_loss:
+    :return: adversarial examples
+    """
     # random initialization
     delta = torch.zeros_like(query).cuda()
     delta.uniform_(-epsilon, epsilon)
@@ -37,8 +56,8 @@ def hash_adv(model, query, target_code, epsilon, step=1.0, iteration=100, target
     loss_list = [] if record_loss else None
     for i in range(iteration):
         alpha = get_alpha(i, iteration)
-        noisy_output = model(query + delta, alpha)
-        loss = loss_func(noisy_output, target_code.detach())
+        adv_code = model(query + delta, alpha)
+        loss = loss_func(adv_code, target_code.detach())
         loss.backward()
 
         delta.data = delta - step / 255 * torch.sign(delta.grad.detach())
@@ -54,7 +73,7 @@ def hash_adv(model, query, target_code, epsilon, step=1.0, iteration=100, target
     return query + delta.detach()
 
 
-def hash_center_code(label, train_code, train_label, bit):
+def generate_mainstay_code(label, train_code, train_label):
     B = label.size(0)  # batch size
     N = train_label.size(0)  # number of training data
     C = label.size(1)  # number of classes
@@ -79,9 +98,30 @@ def hash_center_code(label, train_code, train_label, bit):
     return code
 
 
-def central_attack(args, epsilon=8 / 255., targeted=False):
+def select_target_label(data_labels, unique_label):
+    """
+    select label which is different form original label
+    :param data_labels: labels of original datas
+    :param unique_label: candidate target labels
+    :return: target label for targeted attack
+    """
+    # remove zero label
+    target_label_sum = np.sum(unique_label, axis=1)
+    zero_label_idx = np.where(target_label_sum == 0)[0]
+    unique_label = np.delete(unique_label, zero_label_idx, axis=0)
+
+    target_idx = []
+    similarity = data_labels @ unique_label.transpose()
+    for i, _ in enumerate(data_labels):
+        s = similarity[i]
+        candidate_idx = np.where(s == 0)[0]
+        target_idx.append(np.random.choice(candidate_idx, size=1)[0])
+    return unique_label[np.array(target_idx)]
+
+
+def adv_attack(args, epsilon=8 / 255., targeted=False):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
-    method = 'DHCA'
+    method = 'Ours' + ('_targeted' if targeted else '')
     # load model
     attack_model = get_attack_model_name(args)
     model_path = 'checkpoint/{}.pth'.format(attack_model)
@@ -110,17 +150,20 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
         if os.path.exists(target_label_path):
             target_label = np.loadtxt(target_label_path, dtype=np.int)
         else:
-            raise ValueError('Please generate target_label before attack!')
+            print("Generating target labels")
+            unique_label = np.unique(database_label, axis=0)
+            target_label = select_target_label(test_label, unique_label)
+            np.savetxt(target_label_path, target_label, fmt="%d")
+    else:
+        target_label = test_label
 
     perceptibility = torch.tensor([0, 0, 0], dtype=torch.float)
-    query_code_arr, adv_code_arr, center_code_arr = None, None, None
+    query_code_arr, adv_code_arr, mainstay_code_arr = None, None, None
     for it, (query, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
         query, label = query.cuda(), label.cuda()
         batch_size_ = query.size(0)
 
-        if not targeted:
-            target_l = label
-        else:
+        if targeted:
             if args.retrieve:
                 category = 4
                 target_l = torch.zeros((1, get_classes_num(args.dataset)))
@@ -128,20 +171,21 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
                 target_l = target_l.repeat(batch_size_, 1).cuda()
             else:
                 target_l = torch.from_numpy(target_label[idx]).cuda()
+        else:
+            target_l = label
 
-        center_code = hash_center_code(target_l.float(), train_code, train_label.float(), args.bit)
-        adv_query = hash_adv(model, query, center_code, epsilon, iteration=args.iteration, targeted=targeted)
+        mainstay_code = generate_mainstay_code(target_l.float(), train_code, train_label.float())
+        adv_query = adv_generator(model, query, mainstay_code, epsilon, iteration=args.iteration, targeted=targeted)
 
         perceptibility += cal_perceptibility(query.cpu().detach(), adv_query.cpu().detach()) * batch_size_
 
         query_code = model(query).sign().cpu().detach().numpy()
         adv_code = model(adv_query).sign().cpu().detach().numpy()
-        center_code = center_code.cpu().detach().numpy()
+        mainstay_code = mainstay_code.cpu().detach().numpy()
 
-        query_code_arr = query_code if query_code_arr is None else np.concatenate((query_code_arr, query_code), axis=0)
-        adv_code_arr = adv_code if adv_code_arr is None else np.concatenate((adv_code_arr, adv_code), axis=0)
-        center_code_arr = center_code if center_code_arr is None else np.concatenate((center_code_arr, center_code),
-                                                                                     axis=0)
+        query_code_arr = query_code if query_code_arr is None else np.concatenate((query_code_arr, query_code))
+        adv_code_arr = adv_code if adv_code_arr is None else np.concatenate((adv_code_arr, adv_code))
+        mainstay_code_arr = mainstay_code if mainstay_code_arr is None else np.concatenate((mainstay_code_arr, mainstay_code))
 
         if args.sample and it == 0:
             print("Sample images at iteration {}".format(it))
@@ -153,13 +197,14 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
             images_arr, labels_arr = retrieve_images(query.cpu().numpy(), label.cpu().numpy(), query_code,
                                                      database_code, 10, args.data_dir, args.dataset)
             save_retrieval_images(images_arr, labels_arr, 'ori', attack_model, it)
+            # retrieve by adversarial queries
             images_arr, labels_arr = retrieve_images(adv_query.cpu().numpy(), label.cpu().numpy(), adv_code,
                                                      database_code, 10, args.data_dir, args.dataset)
             save_retrieval_images(images_arr, labels_arr, 'adv', attack_model, it)
 
     # save code
     np.save(os.path.join('log', attack_model, 'Original_code.npy'), query_code_arr)
-    np.save(os.path.join('log', attack_model, '{}{}_code.npy'.format(method, '_targeted' if targeted else '')), adv_code_arr)
+    np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), adv_code_arr)
 
     # calculate map
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
@@ -168,40 +213,41 @@ def central_attack(args, epsilon=8 / 255., targeted=False):
     map_val = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
     logger.log('Ori MAP(retrieval database): {:.5f}'.format(map_val))
 
-    if not targeted:
-        map_val = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
-        logger.log('DHCA MAP(retrieval database): {:.5f}'.format(map_val))
-        map_val = cal_map(database_code, -center_code_arr, database_label, test_label, 5000)
-        logger.log('Theory MAP(retrieval database): {:.5f}'.format(map_val))
-    else:
+    if targeted:
         map_val = cal_map(database_code, adv_code_arr, database_label, target_label, 5000)
-        logger.log('DHCA t-MAP(retrieval database): {:.5f}'.format(map_val))
-        map_val = cal_map(database_code, center_code_arr, database_label, target_label, 5000)
+        logger.log('Ours t-MAP(retrieval database): {:.5f}'.format(map_val))
+        map_val = cal_map(database_code, mainstay_code_arr, database_label, target_label, 5000)
         logger.log('Theory t-MAP(retrieval database): {:.5f}'.format(map_val))
+    else:
+        map_val = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
+        logger.log('Ours MAP(retrieval database): {:.5f}'.format(map_val))
+        map_val = cal_map(database_code, -mainstay_code_arr, database_label, test_label, 5000)
+        logger.log('Theory MAP(retrieval database): {:.5f}'.format(map_val))
 
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--method', dest='method', default='hag', help='name of attack method')
+    parser.add_argument('--targeted', dest='targeted', action="store_true", default=False, help='targeted attack')
     parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
                         choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
                         help='name of the dataset')
     parser.add_argument('--data_dir', dest='data_dir', default='../data/', help='path of the dataset')
     parser.add_argument('--device', dest='device', type=str, default='0', help='gpu device')
     parser.add_argument('--hash_method', dest='hash_method', default='DPH',
-                        choices=['DPH', 'DPSH', 'HashNet'],
+                        choices=['DPH', 'DPSH', 'HashNet', 'CSQ'],
                         help='deep hashing methods')
     parser.add_argument('--backbone', dest='backbone', default='AlexNet',
-                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50', 'ResNet101'],
+                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
                         help='backbone network')
     parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
-    parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
-    parser.add_argument('--iteration', dest='iteration', type=int, default=100, help='number of images in one batch')
-    parser.add_argument('--retrieve', dest='retrieve', type=str2bool, default=False, help='retrieve images')
-    parser.add_argument('--sample', dest='sample', type=str2bool, default=False, help='sample adversarial examples')
-    parser.add_argument('--adv', dest='adv', type=str2bool, default='False',
+    parser.add_argument('--batch_size', dest='batch_size', type=int, default=128, help='number of images in one batch')
+    parser.add_argument('--iteration', dest='iteration', type=int, default=100, help='number of training iteration')
+    parser.add_argument('--retrieve', dest='retrieve', action="store_true", default=False, help='retrieve images')
+    parser.add_argument('--sample', dest='sample', action="store_true", default=False,
+                        help='sample adversarial examples')
+    parser.add_argument('--adv', dest='adv', action="store_true", default=False,
                         help='load model after adversarial training')
-    parser.add_argument('--adv_method', dest='adv_method', type=str, default='cat', choices=['cat', 'atrdh'],
+    parser.add_argument('--adv_method', dest='adv_method', type=str, default='saat', choices=['saat', 'atrdh'],
                         help='adversarial training method')
     parser.add_argument('--lambda', dest='p_lambda', type=float, default=1.0, help='lambda for adversarial loss')
     parser.add_argument('--mu', dest='p_mu', type=float, default=1e-4, help='mu for quantization loss')
@@ -209,4 +255,4 @@ def parser_arguments():
 
 
 if __name__ == '__main__':
-    central_attack(parser_arguments())
+    adv_attack(parser_arguments())

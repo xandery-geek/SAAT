@@ -1,9 +1,12 @@
-# SDHA A Smart Adversarial Attack on Deep Hashing Based Image Retrieval
+# SDHA: A Smart Adversarial Attack on Deep Hashing Based Image Retrieval
 
-import torch.nn.functional
+import os
+import torch
+import numpy as np
+import torch.nn.functional as F
 from tqdm import tqdm
-from utils.hamming_matching import *
-from model.util import *
+from utils.hamming_matching import cal_map, cal_perceptibility
+from model.util import get_alpha, load_model, get_attack_model_name, get_database_code
 from utils.data_provider import get_data_loader, get_data_label
 from utils.util import Logger
 
@@ -16,7 +19,7 @@ def cal_hamming_dis(b1, b2):
     """
     :param b1: k
     :param b2: n * k
-    :return:
+    :return: Hamming distance between b1 and b2
     """
     k = b2.size(1)
     return 0.5 * (k - b1 @ b2.transpose(0, 1))
@@ -58,7 +61,7 @@ def surrogate_func_targeted(h_hat, h, idx, sigma=10, z=-0.3):
 def sdha_loss(x_hat, x, h_hat, h, idx, alpha=25., targeted=False):
     k = h.size(1)
     alpha = alpha / k
-    mse_loss = torch.nn.functional.mse_loss(x_hat, x)
+    mse_loss = F.mse_loss(x_hat, x)
     if not targeted:
         surrogate_loss = surrogate_func(h_hat, h, idx)
     else:
@@ -66,7 +69,7 @@ def sdha_loss(x_hat, x, h_hat, h, idx, alpha=25., targeted=False):
     return mse_loss + alpha * surrogate_loss
 
 
-def attack(model, x, idx, targeted=False, epochs=100, epsilon=8 / 255., record_loss=False):
+def adv_generator(model, x, idx, targeted=False, epochs=100, epsilon=8 / 255., record_loss=False):
     x = x.cuda()
     h = model(x)
     x, h = x.detach(), h.detach()
@@ -159,10 +162,7 @@ def sdha(args, targeted=False):
 
     # generate global similarity matrix
     train_label_tensor = torch.from_numpy(train_label).float().cuda()
-    if not targeted:
-        test_label_tensor = torch.from_numpy(test_label).float().cuda()
-        g_similarity = test_label_tensor @ train_label_tensor.transpose(0, 1)  # N_test * N_train
-    else:
+    if targeted:
         # load target label
         target_label_path = 'log/target_label_{}.txt'.format(args.dataset)
         if os.path.exists(target_label_path):
@@ -171,16 +171,20 @@ def sdha(args, targeted=False):
             raise ValueError('Please generate target_label before attack!')
         target_label_tensor = torch.from_numpy(target_label).float().cuda()
         g_similarity = target_label_tensor @ train_label_tensor.transpose(0, 1)  # N_test * N_train
+    else:
+        test_label_tensor = torch.from_numpy(test_label).float().cuda()
+        g_similarity = test_label_tensor @ train_label_tensor.transpose(0, 1)  # N_test * N_train
+        target_label = test_label
 
     # attack
     perceptibility = torch.tensor([0, 0, 0], dtype=torch.float)
     query_code_arr, adv_code_arr = None, None
     for _, (x, _, idx) in enumerate(tqdm(test_loader, ncols=50)):
-        h, h_hat, x_hat = attack(model, x, idx, targeted=targeted, epochs=args.iteration)
+        h, h_hat, x_hat = adv_generator(model, x, idx, targeted=targeted, epochs=args.iteration)
         # h, h_hat = theory_attack_targeted(model, x, idx)
         # h, h_hat = theory_attack(model, x, idx)
-        query_code_arr = h.numpy() if query_code_arr is None else np.concatenate((query_code_arr, h.numpy()), axis=0)
-        adv_code_arr = h_hat.numpy() if adv_code_arr is None else np.concatenate((adv_code_arr, h_hat.numpy()), axis=0)
+        query_code_arr = h.numpy() if query_code_arr is None else np.concatenate((query_code_arr, h.numpy()))
+        adv_code_arr = h_hat.numpy() if adv_code_arr is None else np.concatenate((adv_code_arr, h_hat.numpy()))
         perceptibility += cal_perceptibility(x, x_hat) * x.size(0)
 
     database_code, database_label = get_database_code(model, database_loader, attack_model)
@@ -188,16 +192,16 @@ def sdha(args, targeted=False):
     # save code
     np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), adv_code_arr)
 
-    # calculate map
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
     logger.log('perceptibility: {}'.format(perceptibility / num_test))
 
+    # calculate map
     ori_map = cal_map(database_code, query_code_arr, database_label, test_label, 5000)
     logger.log('Ori MAP(retrieval database): {:.5f}'.format(ori_map))
 
-    if not targeted:
-        adv_map = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
-        logger.log('SDHA MAP(retrieval database): {:.5f}'.format(adv_map))
-    else:
+    if targeted:
         adv_map = cal_map(database_code, adv_code_arr, database_label, target_label, 5000)
         logger.log('SDHA t-MAP(retrieval database): {:.5f}'.format(adv_map))
+    else:
+        adv_map = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
+        logger.log('SDHA MAP(retrieval database): {:.5f}'.format(adv_map))

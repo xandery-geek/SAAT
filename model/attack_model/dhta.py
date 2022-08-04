@@ -1,18 +1,21 @@
-import collections
-import pandas as pd
-from utils.data_provider import *
-from utils.hamming_matching import *
-from model.util import *
+# DHTA: Targeted Attack for Deep Hashing based Retrieval
+
+import os
+import torch
+import numpy as np
+from utils.data_provider import get_data_loader, get_data_label
+from utils.hamming_matching import cal_map
+from model.util import get_alpha, get_attack_model_name, load_model, get_database_code
 from utils.util import Logger
 from tqdm import tqdm
 
 
-def target_adv_loss(noisy_output, target_hash):
-    loss = -torch.mean(noisy_output * target_hash)
+def adv_loss(adv_code, target_code):
+    loss = -torch.mean(adv_code * target_code)
     return loss
 
 
-def target_hash_adv(model, query, target_hash, epsilon, step=1, iteration=2000, randomize=False):
+def adv_generator(model, query, target_code, epsilon, step=1, iteration=2000, randomize=False):
     delta = torch.zeros_like(query).cuda()
     if randomize:
         delta.uniform_(-epsilon, epsilon)
@@ -21,12 +24,10 @@ def target_hash_adv(model, query, target_hash, epsilon, step=1, iteration=2000, 
 
     for i in range(iteration):
         alpha = get_alpha(i, iteration)
-        noisy_output = model(query + delta, alpha)
-        loss = target_adv_loss(noisy_output, target_hash)
+        adv_code = model(query + delta, alpha)
+        loss = adv_loss(adv_code, target_code)
         loss.backward()
 
-        # delta.data = delta - step * delta.grad.detach()
-        # delta.data = delta - step * delta.grad.detach() / (torch.norm(delta.grad.detach(), 2) + 1e-9)
         delta.data = delta - step / 255 * torch.sign(delta.grad.detach())
         delta.data = delta.data.clamp(-epsilon, epsilon)
         delta.data = (query.data + delta.data).clamp(0, 1) - query.data
@@ -34,14 +35,8 @@ def target_hash_adv(model, query, target_hash, epsilon, step=1, iteration=2000, 
     return query + delta.detach()
 
 
-def hash_anchor_code(hash_codes):
+def generate_anchor_code(hash_codes):
     return torch.sign(torch.sum(hash_codes, dim=0))
-
-
-def sample_image(image, name, sample_dir='sample/dhta'):
-    image = image.cpu().detach()[0]
-    image = transforms.ToPILImage()(image.float())
-    image.save(os.path.join(sample_dir, name + '.png'), quality=100)
 
 
 def dhta(args, num_target=9, epsilon=0.032):
@@ -68,9 +63,7 @@ def dhta(args, num_target=9, epsilon=0.032):
     database_labels_str = [''.join(label) for label in database_label.astype(str)]
     database_labels_str = np.array(database_labels_str, dtype=str)
 
-    # calculate target label
     target_label_path = 'log/target_label_{}.txt'.format(args.dataset)
-
     if os.path.exists(target_label_path):
         print("Loading target label from {}".format(target_label_path))
         target_labels = np.loadtxt(target_label_path, dtype=np.int)
@@ -81,42 +74,35 @@ def dhta(args, num_target=9, epsilon=0.032):
 
     adv_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
     anchor_code_arr = np.zeros((num_test, args.bit), dtype=np.float)
-    # perceptibility = 0
     for it, data in enumerate(tqdm(test_loader, ncols=50)):
-        query, _, index = data
+        query, _, idx = data
         query = query.cuda()
-        batch_size_ = index.size(0)
+        batch_size_ = idx.size(0)
 
         batch_anchor_code = torch.zeros((batch_size_, args.bit), dtype=torch.float)
         for i in range(batch_size_):
             # select hash code which has the same label with target from database randomly
-            target_label_str = target_labels_str[index[0] + i]
-            anchor_indexes = np.where(database_labels_str == target_label_str)
-            anchor_indexes = np.random.choice(anchor_indexes[0], size=num_target)
+            target_label_str = target_labels_str[idx[0] + i]
+            anchor_idx = np.where(database_labels_str == target_label_str)
+            anchor_idx = np.random.choice(anchor_idx[0], size=num_target)
 
-            anchor_code = hash_anchor_code(torch.from_numpy(database_code[anchor_indexes]))
+            anchor_code = generate_anchor_code(torch.from_numpy(database_code[anchor_idx]))
             anchor_code = anchor_code.view(1, args.bit)
             batch_anchor_code[i, :] = anchor_code
 
         anchor_code_arr[it * args.batch_size:it * args.batch_size + batch_size_] = batch_anchor_code.numpy()
-        adv_query = target_hash_adv(model, query, batch_anchor_code.cuda(), epsilon, iteration=args.iteration)
+        adv_query = adv_generator(model, query, batch_anchor_code.cuda(), epsilon, iteration=args.iteration)
         u_ind = np.linspace(it * args.batch_size, np.min((num_test, (it + 1) * args.batch_size)) - 1,
                             batch_size_, dtype=int)
 
-        # perceptibility += F.mse_loss(queries, query_adv).data * batch_size_
         adv_code = model(adv_query).sign().cpu().data.numpy()
         adv_code_arr[u_ind, :] = adv_code
 
     # save code
     np.save(os.path.join('log', attack_model, '{}_code.npy'.format(method)), adv_code_arr)
 
-    a_t_map = cal_map(database_code, anchor_code_arr, database_label, target_labels, 5000)
-    a_map = cal_map(database_code, anchor_code_arr, database_label, test_label, 5000)
-    t_map = cal_map(database_code, adv_code_arr, database_label, target_labels, 5000)
-    _map = cal_map(database_code, adv_code_arr, database_label, test_label, 5000)
-
     logger = Logger(os.path.join('log', attack_model), '{}.txt'.format(method))
-    logger.log('AnchorCode t-MAP(retrieval database) :{:.5f}'.format(a_t_map))
-    logger.log('AnchorCode MAP(retrieval database) :{:.5f}'.format(a_map))
+    t_map = cal_map(database_code, anchor_code_arr, database_label, target_labels, 5000)
+    logger.log('AnchorCode t-MAP(retrieval database) :{:.5f}'.format(t_map))
+    t_map = cal_map(database_code, adv_code_arr, database_label, target_labels, 5000)
     logger.log('{} t-MAP(retrieval database) :{:.5f}'.format(method, t_map))
-    logger.log('{} MAP(retrieval database): {:.5f}'.format(method, _map))
