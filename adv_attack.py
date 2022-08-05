@@ -76,24 +76,19 @@ def adv_generator(model, query, target_code, epsilon, step=1.0, iteration=100, t
 def generate_mainstay_code(label, train_code, train_label):
     B = label.size(0)  # batch size
     N = train_label.size(0)  # number of training data
-    C = label.size(1)  # number of classes
 
-    # w_1 = (label @ train_label.t() > 0).float()
-    # w_2 = 1 - w_1
-    
-    w_1 = (label @ train_label.t())/torch.sum(label, dim=1, keepdim=True)  # B * N
-    mask_p = w_1.sign()  # mask of positives
+    w_1 = label @ train_label.t()
+    label_norm = torch.norm(label, p=2, dim=1, keepdim=True).repeat(1, N)  # B * N
+    train_label_norm = torch.norm(train_label, p=2, dim=1, keepdim=True).repeat(1, B) # N * B
+    w_1 = w_1 / (label_norm * train_label_norm.t() + 1e-8)  # B * N
+    w_2 = 1 - w_1.sign()
 
-    label_sum = torch.sum(label, dim=1, keepdim=True).repeat(1, N)  # B * N
-    train_label_sum = torch.sum(train_label, dim=1, keepdim=True).repeat(1, B)  # N * B
-    w_2 = (label_sum + train_label_sum.t())*(1 - mask_p)/C
+    n_p = 1 / torch.sum(w_1, dim=1, keepdim=True)
+    w_1 = n_p.where(n_p != torch.inf, torch.tensor([0], dtype=torch.float).cuda()) * w_1
 
-    w_p = 1 / torch.sum(w_1, dim=1, keepdim=True)
-    w_1 = w_p.where(w_p != torch.inf, torch.tensor([0], dtype=torch.float).cuda()) * w_1
+    n_n = 1 / torch.sum(w_2, dim=1, keepdim=True)
+    w_2 = n_n.where(n_n != torch.inf, torch.tensor([0], dtype=torch.float).cuda()) * w_2
 
-    w_n = 1 / torch.sum(w_2, dim=1, keepdim=True)
-    w_2 = w_n.where(w_n != torch.inf, torch.tensor([0], dtype=torch.float).cuda()) * w_2
-    
     code = torch.sign(w_1 @ train_code - w_2 @ train_code)  # B * K
     return code
 
