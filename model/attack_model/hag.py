@@ -97,7 +97,7 @@ def hag(args):
     # attack
     perceptibility = torch.tensor([0, 0, 0], dtype=torch.float)
     query_code_arr, adv_code_arr = None, None
-    for i, (x, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
+    for i, (x, label, idx) in enumerate(tqdm(test_loader)):
         h, h_hat, x_hat = adv_generator(model, x, epochs=args.iteration)
         # h, h_hat, x_hat = theory_attack(model, x)
         query_code_arr = h.numpy() if query_code_arr is None else np.concatenate((query_code_arr, h.numpy()))

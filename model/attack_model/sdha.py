@@ -179,7 +179,7 @@ def sdha(args, targeted=False):
     # attack
     perceptibility = torch.tensor([0, 0, 0], dtype=torch.float)
     query_code_arr, adv_code_arr = None, None
-    for _, (x, _, idx) in enumerate(tqdm(test_loader, ncols=50)):
+    for _, (x, _, idx) in enumerate(tqdm(test_loader)):
         h, h_hat, x_hat = adv_generator(model, x, idx, targeted=targeted, epochs=args.iteration)
         # h, h_hat = theory_attack_targeted(model, x, idx)
         # h, h_hat = theory_attack(model, x, idx)

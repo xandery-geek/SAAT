@@ -3,74 +3,11 @@ import argparse
 import torch
 import numpy as np
 from tqdm import tqdm
-from model.util import get_alpha, get_attack_model_name, load_model, generate_code, get_database_code
+from model.util import get_attack_model_name, load_model, generate_code, get_database_code
 from model.util import sample_images, retrieve_images, save_retrieval_images
 from utils.data_provider import get_data_loader, get_data_label, get_classes_num
 from utils.hamming_matching import cal_map, cal_perceptibility
-from utils.util import Logger
-
-
-def adv_loss(adv_code, target_code):
-    # adversarial loss
-    # loss = torch.mean(adv_code * target_code)
-
-    # a better version
-    sim = adv_code * target_code
-    w = (sim > -0.5).int()
-    m = w.sum()
-    sim = w * (sim + 2) * sim
-    loss = sim.sum()/m
-    return loss
-
-
-def adv_loss_targeted(adv_code, target_code):
-    # loss = - torch.mean(adv_code * target_code)
-    sim = adv_code * target_code
-    w = (sim < 0.5).int()
-    m = w.sum()
-    sim = w * (sim + 2) * sim
-    loss = -sim.sum()/m
-    return loss
-
-
-def adv_generator(model, query, target_code, epsilon, step=1.0, iteration=100, targeted=False, record_loss=False):
-    """
-    Generator of adversarial examples, PGD here
-    :param model: hashing model
-    :param query: benign query (image)
-    :param target_code: target code for attack
-    :param epsilon:
-    :param step:
-    :param iteration:
-    :param targeted: targeted or non-targeted attack
-    :param record_loss:
-    :return: adversarial examples
-    """
-    # random initialization
-    delta = torch.zeros_like(query).cuda()
-    delta.uniform_(-epsilon, epsilon)
-    delta.data = (query.data + delta.data).clamp(0, 1) - query.data
-    delta.requires_grad = True
-
-    loss_func = adv_loss_targeted if targeted else adv_loss
-    loss_list = [] if record_loss else None
-    for i in range(iteration):
-        alpha = get_alpha(i, iteration)
-        adv_code = model(query + delta, alpha)
-        loss = loss_func(adv_code, target_code.detach())
-        loss.backward()
-
-        delta.data = delta - step / 255 * torch.sign(delta.grad.detach())
-        delta.data = delta.data.clamp(-epsilon, epsilon)
-        delta.data = (query.data + delta.data).clamp(0, 1) - query.data
-        delta.grad.zero_()
-
-        if loss_list is not None and (i + 1) % (iteration // 10) == 0:
-            loss_list.append(round(loss.item(), 4))
-
-    if loss_list is not None:
-        print("loss :{}".format(loss_list))
-    return query + delta.detach()
+from utils.util import Logger, import_class
 
 
 def generate_mainstay_code(label, train_code, train_label):
@@ -114,7 +51,11 @@ def select_target_label(data_labels, unique_label):
     return unique_label[np.array(target_idx)]
 
 
-def adv_attack(args, epsilon=8 / 255., targeted=False):
+def get_generator(name):
+    return import_class('model.adv_generator.{}.{}Generator'.format(str.lower(name), name))
+
+
+def adv_attack(args, epsilon=8 / 255., targeted=False, generator='PGD'):
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
     method = 'Ours' + ('_targeted' if targeted else '')
     # load model
@@ -143,7 +84,7 @@ def adv_attack(args, epsilon=8 / 255., targeted=False):
     if targeted:
         target_label_path = 'log/target_label_{}.txt'.format(args.dataset)
         if os.path.exists(target_label_path):
-            target_label = np.loadtxt(target_label_path, dtype=np.int)
+            target_label = np.loadtxt(target_label_path, dtype=np.int32)
         else:
             print("Generating target labels")
             unique_label = np.unique(database_label, axis=0)
@@ -152,9 +93,10 @@ def adv_attack(args, epsilon=8 / 255., targeted=False):
     else:
         target_label = test_label
 
+    adv_generator = get_generator(generator)(model, epsilon, iteration=args.iteration, targeted=targeted)
     perceptibility = torch.tensor([0, 0, 0], dtype=torch.float)
     query_code_arr, adv_code_arr, mainstay_code_arr = None, None, None
-    for it, (query, label, idx) in enumerate(tqdm(test_loader, ncols=50)):
+    for it, (query, label, idx) in enumerate(tqdm(test_loader)):
         query, label = query.cuda(), label.cuda()
         batch_size_ = query.size(0)
 
@@ -170,7 +112,7 @@ def adv_attack(args, epsilon=8 / 255., targeted=False):
             target_l = label
 
         mainstay_code = generate_mainstay_code(target_l.float(), train_code, train_label.float())
-        adv_query = adv_generator(model, query, mainstay_code, epsilon, iteration=args.iteration, targeted=targeted)
+        adv_query = adv_generator(query, mainstay_code)
 
         perceptibility += cal_perceptibility(query.cpu().detach(), adv_query.cpu().detach()) * batch_size_
 
@@ -246,8 +188,12 @@ def parser_arguments():
                         help='adversarial training method')
     parser.add_argument('--lambda', dest='p_lambda', type=float, default=1.0, help='lambda for adversarial loss')
     parser.add_argument('--mu', dest='p_mu', type=float, default=1e-4, help='mu for quantization loss')
+    parser.add_argument('--generator', dest='generator', type=str, default='PGD', help='adversarial generator')
     return parser.parse_args()
 
 
 if __name__ == '__main__':
-    adv_attack(parser_arguments())
+    torch.multiprocessing.set_sharing_strategy('file_system')
+
+    args = parser_arguments()
+    adv_attack(args, targeted=args.targeted, generator=args.generator)

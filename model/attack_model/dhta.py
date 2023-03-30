@@ -74,7 +74,7 @@ def dhta(args, num_target=9, epsilon=0.032):
 
     adv_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
     anchor_code_arr = np.zeros((num_test, args.bit), dtype=np.float)
-    for it, data in enumerate(tqdm(test_loader, ncols=50)):
+    for it, data in enumerate(tqdm(test_loader)):
         query, _, idx = data
         query = query.cuda()
         batch_size_ = idx.size(0)

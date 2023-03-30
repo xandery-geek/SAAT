@@ -75,7 +75,7 @@ class Hashing(object):
         self.print_log('Train Epoch {}:'.format(epoch))
         batch_number = len(self.train_loader)
         avg_loss = 0
-        process = tqdm(self.train_loader, ncols=50)
+        process = tqdm(self.train_loader)
         for i, (inputs, labels, index) in enumerate(process):
             inputs = inputs.cuda()
             labels = labels.cuda()
@@ -114,7 +114,7 @@ class Hashing(object):
         hash_code_list, labels_list = [], []
 
         self.model.eval()
-        for images, labels, _ in tqdm(data_loader, ncols=50):
+        for images, labels, _ in tqdm(data_loader):
             images = images.cuda()
             outputs = self.model(images)
             hash_code_list.append(outputs.data.cpu())

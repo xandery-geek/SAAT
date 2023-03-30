@@ -32,9 +32,14 @@ def get_batch(data_loader, batch):
     return it.next()
 
 
-def check_dir(dir_path):
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
+def check_dir(path, isdir=True):
+     """
+     Check whether the `path` is exist.
+     isdir: `True` indicates the path is a directory, otherwise is a file.
+     """
+     path = '/'.join(path.split('/')[:-1]) if not isdir else path
+     if not os.path.isdir(path):
+         os.makedirs(path)
 
 
 class Logger(object):

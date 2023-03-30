@@ -160,7 +160,7 @@ def tha(args, epsilon=8 / 255.):
     adv_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
     query_code_arr = np.zeros([num_test, args.bit], dtype=np.float32)
     prototype_code_arr = np.zeros((num_test, args.bit), dtype=np.float)
-    for it, (query, _, idx) in enumerate(tqdm(test_loader, ncols=50)):
+    for it, (query, _, idx) in enumerate(tqdm(test_loader)):
         query = query.cuda()
 
         batch_target_label = target_label[idx.numpy(), :]
