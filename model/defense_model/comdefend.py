@@ -67,18 +67,26 @@ class Decoder(nn.Module):
         return self.features(x)
 
 
-class ComDefend(nn.Module):
-    def __init__(self, args):
+class ComDefend(object):
+    def __init__(self, args, ckpt=None):
         super(ComDefend, self).__init__()
 
         self.args = args
         self.encoder = Encoder()
         self.decoder = Decoder()
 
-        params = list(self.encoder.parameters()) + list(self.decoder.parameters())
-        self.optimizer = optim.Adam(params, lr=args.lr, betas=(0.5, 0.999))
+        if ckpt:
+            print("Loading ckpt from {}".format(ckpt))
+            ckpt = torch.load(ckpt)
+            self.args = ckpt['args']
+            self.optimizer = ckpt['optimizer']
+            self.encoder.load_state_dict(ckpt['encoder'])
+            self.decoder.load_state_dict(ckpt['decoder'])
+        else:
+            params = list(self.encoder.parameters()) + list(self.decoder.parameters())
+            self.optimizer = optim.Adam(params, lr=self.args.lr, betas=(0.5, 0.999))
 
-    def _train(self, trainloader):
+    def _train_epoch(self, trainloader):
         self.encoder.train()
         self.decoder.train()
 
@@ -112,7 +120,7 @@ class ComDefend(nn.Module):
 
         return img_tensor, ori_img_tensor
 
-    def _test(self, testloader):
+    def _test_epoch(self, testloader):
         self.encoder.eval()
         self.decoder.eval()
 
@@ -153,14 +161,7 @@ class ComDefend(nn.Module):
         torch.save(state_dict, filepath)
 
         if is_best:
-            shutil.copyfile(filepath, filepath.split('.pth')[0] + '_best.pth')
-
-    def load_checkpoint(self, ckpt):
-        print("Loading ckpt from {}".format(ckpt))
-        ckpt = torch.load(ckpt)
-        self.encoder.load_state_dict(ckpt['encoder'])
-        self.decoder.load_state_dict(ckpt['decoder'])
-        self.optimizer.load_state_dict(ckpt['optimizer'])
+            shutil.copyfile(filepath, '/'.join(filepath.split('/')[:-1]) + '/best.pth')
 
     @staticmethod
     def save_image(save_path, tensor, ori_tensor):
@@ -186,8 +187,8 @@ class ComDefend(nn.Module):
 
         for epoch in range(self.args.max_epochs):
             print("=============== Epoch: {} ===============".format(epoch))
-            train_img, train_ori = self._train(trainloader)
-            test_loss, test_img, test_ori = self._test(testloader)
+            train_img, train_ori = self._train_epoch(trainloader)
+            test_loss, test_img, test_ori = self._test_epoch(testloader)
             
             img_path = "checkpoint/comdefend/{}/train_{}.jpg".format(self.args.dataset, epoch)
             self.save_image(img_path, train_img[:8], train_ori[:8])
@@ -201,9 +202,17 @@ class ComDefend(nn.Module):
             else:
                 isbest = False
 
-            filepath = "checkpoint/comdefend/{}_comdefend.pth".format(self.args.dataset)
+            filepath = "checkpoint/comdefend/{}/comdefend_{}.pth".format(self.args.dataset, epoch)
             self.save_checkpoint(isbest, filepath)
     
+    def cuda(self):
+        self.encoder.cuda()
+        self.decoder.cuda()
+    
+    def eval(self):
+        self.encoder.eval()
+        self.decoder.eval()
+
     def apply(self, x):
         linear_code = self.encoder(x)
         noisy_code = linear_code - torch.randn(linear_code.size()).cuda() * self.args.std

@@ -3,9 +3,10 @@ import time
 import torch
 import argparse
 import numpy as np
+import utils.argument as argument
 from tqdm import tqdm
 from utils.data_provider import get_data_loader, get_classes_num
-from utils.util import import_class, get_batch, str2bool
+from utils.util import import_class, get_batch
 from utils.hamming_matching import cal_map
 from model.util import retrieve_images
 
@@ -29,7 +30,7 @@ class Hashing(object):
         if args.load:
             self.model = self.load_model()
         else:
-            model = 'model.hash_model.{}.{}'.format(str.lower(args.method), args.method)
+            model = 'model.hash_model.{}.{}'.format(str.lower(args.hash_method), args.hash_method)
             num_class = get_classes_num(args.dataset)
             self.model = import_class(model)(dataset=args.dataset,
                                              **{'bit': args.bit,
@@ -55,7 +56,7 @@ class Hashing(object):
         self.print_log("Model: {}".format(self.model_name))
 
     def load_model(self):
-        model_path = '{}/{}_{}_{}_{}.pth'.format(self.args.save, self.args.dataset, self.args.method,
+        model_path = '{}/{}_{}_{}_{}.pth'.format(self.args.save, self.args.dataset, self.args.hash_method,
                                                  self.args.backbone, self.args.bit)
         self.print_log("Loading Model: {}".format(model_path))
         model = torch.load(model_path)
@@ -185,49 +186,27 @@ class Hashing(object):
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
-    # description of data
-    parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
-                        choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
-                        help='name of the dataset')
-    parser.add_argument('--data_dir', dest='data_dir', default='../data/', help='path of the dataset')
-    parser.add_argument('--database_file', dest='database_file', default='database_img.txt',
-                        help='the image list of database images')
-    parser.add_argument('--train_file', dest='train_file', default='train_img.txt',
-                        help='the image list of training images')
-    parser.add_argument('--test_file', dest='test_file', default='test_img.txt', help='the image list of test images')
-    parser.add_argument('--database_label', dest='database_label', default='database_label.txt',
-                        help='the label list of database images')
-    parser.add_argument('--train_label', dest='train_label', default='train_label.txt',
-                        help='the label list of training images')
-    parser.add_argument('--test_label', dest='test_label', default='test_label.txt',
-                        help='the label list of test images')
-    # model
-    parser.add_argument('--hash_method', dest='method', default='DPH', choices=['DPH', 'DPSH', 'CSQ', 'HashNet'],
-                        help='deep hashing methods')
-    parser.add_argument('--backbone', dest='backbone', default='AlexNet',
-                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
-                        help='backbone network')
-    parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
-    parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
+    
+    parser = argument.add_base_arguments(parser)
+    parser = argument.add_dataset_arguments(parser)
+    parser = argument.add_model_arguments(parser)
 
-    # training or test
-    parser.add_argument('--train', dest='train', type=str2bool, default=False, choices=[True, False],
-                        help='to train or not')
-    parser.add_argument('--test', dest='test', type=str2bool, default=False, choices=[True, False],
-                        help='to test or not')
-    parser.add_argument('--generate', dest='generate', type=str2bool, default=False, choices=[True, False],
-                        help='to generate or not')
-    parser.add_argument('--retrieve', dest='retrieve', type=str2bool, default=False, choices=[True, False],
-                        help='to retrieve or not')
-    parser.add_argument('--load_model', dest='load', type=str2bool, default=False,
-                        help='if continue training, load the latest model: 1: true, 0: false')
+    # arguments for different phases
+    parser.add_argument('--train', dest='train', action='store_true', default=False, help='to train or not')
+    parser.add_argument('--test', dest='test', action='store_true', default=False, help='to test or not')
+    parser.add_argument('--generate', dest='generate', action='store_true', default=False, help='to generate or not')
+    parser.add_argument('--retrieve', dest='retrieve', action='store_true', default=False, help='to retrieve or not')
+
+    # arguments for training
+    parser.add_argument('--load_model', dest='load', action='store_true', default=False, help='load the latest model for continue training')
     parser.add_argument('--checkpoint_dir', dest='save', default='checkpoint', help='models are saved here')
     parser.add_argument('--n_epochs', dest='n_epochs', type=int, default=100, help='number of epoch')
     parser.add_argument('--learning_rate', dest='lr', type=float, default=0.01, help='initial learning rate for SGD')
     parser.add_argument('--momentum', dest='momentum', type=float, default=0.9, help='momentum for SGD')
     parser.add_argument('--weight_decay', dest='wd', type=float, default=5e-4, help='weight decay for SGD')
 
-    parser.add_argument('--device', dest='device', type=str, default='0', help='gpu device')
+    parser.add_argument('--batch_size', dest='batch_size', type=int, default=32, help='number of images in one batch')
+    
     return parser.parse_args()
 
 

@@ -2,6 +2,7 @@ import os
 import argparse
 import torch
 import numpy as np
+import utils.argument as argument
 from tqdm import tqdm
 from model.util import get_attack_model_name, load_model, generate_code, get_database_code
 from model.util import sample_images, retrieve_images, save_retrieval_images
@@ -164,31 +165,22 @@ def adv_attack(args, epsilon=8 / 255., targeted=False, generator='PGD'):
 
 def parser_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--targeted', dest='targeted', action="store_true", default=False, help='targeted attack')
-    parser.add_argument('--dataset_name', dest='dataset', default='NUS-WIDE',
-                        choices=['CIFAR-10', 'ImageNet', 'FLICKR-25K', 'NUS-WIDE', 'MS-COCO'],
-                        help='name of the dataset')
-    parser.add_argument('--data_dir', dest='data_dir', default='../data/', help='path of the dataset')
-    parser.add_argument('--device', dest='device', type=str, default='0', help='gpu device')
-    parser.add_argument('--hash_method', dest='hash_method', default='DPH',
-                        choices=['DPH', 'DPSH', 'HashNet', 'CSQ'],
-                        help='deep hashing methods')
-    parser.add_argument('--backbone', dest='backbone', default='AlexNet',
-                        choices=['AlexNet', 'VGG11', 'VGG16', 'VGG19', 'ResNet18', 'ResNet50'],
-                        help='backbone network')
-    parser.add_argument('--code_length', dest='bit', type=int, default=32, help='length of the hashing code')
-    parser.add_argument('--batch_size', dest='batch_size', type=int, default=128, help='number of images in one batch')
-    parser.add_argument('--iteration', dest='iteration', type=int, default=100, help='number of training iteration')
-    parser.add_argument('--retrieve', dest='retrieve', action="store_true", default=False, help='retrieve images')
-    parser.add_argument('--sample', dest='sample', action="store_true", default=False,
-                        help='sample adversarial examples')
+    
+    parser = argument.add_base_arguments(parser)
+    parser = argument.add_dataset_arguments(parser)
+    parser = argument.add_model_arguments(parser)
+    
+    # arguments for attack
+    parser = argument.add_attack_arguments(parser)
+    parser.add_argument('--generator', dest='generator', type=str, default='PGD', help='adversarial generator')
+
+    # arguments for defense
     parser.add_argument('--adv', dest='adv', action="store_true", default=False,
                         help='load model after adversarial training')
-    parser.add_argument('--adv_method', dest='adv_method', type=str, default='saat', choices=['saat', 'atrdh'],
-                        help='adversarial training method')
-    parser.add_argument('--lambda', dest='p_lambda', type=float, default=1.0, help='lambda for adversarial loss')
-    parser.add_argument('--mu', dest='p_mu', type=float, default=1e-4, help='mu for quantization loss')
-    parser.add_argument('--generator', dest='generator', type=str, default='PGD', help='adversarial generator')
+    parser = argument.add_defense_arguments(parser)
+
+    # arguments for dataset
+    parser.add_argument('--batch_size', dest='batch_size', type=int, default=128, help='number of images in one batch')
     return parser.parse_args()
 
 
