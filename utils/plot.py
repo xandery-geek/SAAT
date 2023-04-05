@@ -74,7 +74,7 @@ def plot_ablation(row, para_type='lambda'):
 
     for i, curve in enumerate(curve_arr):
         x = range(len(curve[:, 0]))
-        y = curve[:, 1]
+        y = curve[:, 1] * 100
         plt.plot(x, y, label=curve_label[i], c=color[i], ls=style[i], lw=2.5, markerfacecolor='none'
                  , markeredgewidth=2, marker=marker_tuple[i], markersize=ms_tuple[i])
     plt.xticks(range(curve_arr.shape[1]), labels=[str(i) for i in curve_arr[0, :, 0]])
