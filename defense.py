@@ -23,11 +23,11 @@ def parser_arguments():
 
 if __name__ == '__main__':
     args = parser_arguments()
-    print("Current Defense Method: {}".format(args.method))
+    print("Current Defense Method: {}".format(args.adv_method))
     if args.adv_method == 'saat':
         saat(args)
     elif args.adv_method == 'atrdh':
         args.epochs = 100
         atrdh(args)
     else:
-        raise NotImplementedError("Method {} not implemented".format(args.method))
+        raise NotImplementedError("Method {} not implemented".format(args.adv_method))
