@@ -69,3 +69,20 @@ python attack.py --bit 32 --dataset NUS-WIDE --attack_method mainstay --adv --ad
 ### Comparison with other adversarial training methods
 
 ![adversarial training](./figure/adversarial%20training.jpg?raw=true)
+
+
+## Cite
+If you find this work is useful, please cite the following:
+
+```
+@ARTICLE{10189878,
+  author={Yuan, Xu and Zhang, Zheng and Wang, Xunguang and Wu, Lin},
+  journal={IEEE Transactions on Information Forensics and Security}, 
+  title={Semantic-Aware Adversarial Training for Reliable Deep Hashing Retrieval}, 
+  year={2023},
+  volume={},
+  number={},
+  pages={1-1},
+  doi={10.1109/TIFS.2023.3297791}
+  }
+```
