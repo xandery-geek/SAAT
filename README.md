@@ -80,9 +80,8 @@ If you find this work is useful, please cite the following:
   journal={IEEE Transactions on Information Forensics and Security}, 
   title={Semantic-Aware Adversarial Training for Reliable Deep Hashing Retrieval}, 
   year={2023},
-  volume={},
+  volume={18},
   number={},
-  pages={1-1},
-  doi={10.1109/TIFS.2023.3297791}
-  }
+  pages={4681-4694},
+  doi={10.1109/TIFS.2023.3297791}}
 ```
